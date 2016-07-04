@@ -119,8 +119,17 @@ $ fit2gpx.pl -c input.fit
 </pre>
 Difference between them is in the syntax how heart rate, cadence, temperature &
 power data is stored in the file. In both cases a Cluetrust extension
-**&lt;gpxdata:lap&gt;** will be added to the end of file, where a lot of
-average/min/max values are stored.
+**&lt;gpxdata:lap&gt;** will be added to the end of file, where the following
+average/min/max values are stored:
+
+*startPoint, endPoint, startTime, elapsedTime, calories, distance, avg_speed,
+max_speed, min_altitude, avg_altitude, max_altitude, total_ascent, total_descent,
+distance_uphill, distance_downhill, avg_incline_uphill, avg_incline_downhill,
+avg_rise_rate_uphill, avg_rise_rate_downhill, min_heart_rate, max_heart_rate,
+min_percent_hrmax, avg_percent_hrmax, max_percent_hrmax, time_under_target_zone,
+time_in_target_zone, time_over_target_zone, avg_power, avg_power_KJ,
+avg_power_W_per_Kg, max_power, avg_cadence, max_cadence, min_temperature,
+avg_temperature, max_temperature, total_cycles, total_records*
 
 #### FIT to SLF (SigmaSport log file)
 
