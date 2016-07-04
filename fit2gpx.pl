@@ -7,7 +7,6 @@ use POSIX;
 use POSIX::strftime::GNU;
 use File::Basename;
 use List::Util qw(sum);
-use Data::UUID;
 use Config::Simple ('-lc'); # ignore case
 #use GD::Graph::Data;
 #use GD::Graph::lines;
@@ -16,7 +15,7 @@ use Config::Simple ('-lc'); # ignore case
 # Global variables definition
 (my $prog = basename($0)) =~ s/.pl$//i;
 
-my $indent = " " x 2; # default indent: 2 spaces
+my $indent = " " x 4; # default indent: 4 spaces
 my $timeoffs = 631065600; # sec since Garmin Epoch (1989-12-31 00:00:00 GMT)
 
 # Min/max/average values
@@ -142,6 +141,7 @@ my $prev_lat; my $prev_lon;
 # my $prev_dist; my $prev_alt;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
 my $tot_time;
+my $tot_records;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
 my $histSize = 6;
@@ -156,19 +156,24 @@ my $filt_alt = [];
 #------------------------------------------------------------------------------
 # Command line parsing
 my $overwrite = 0;
+my $garmin_ext = 1; # 0 means cluetrust_ext
+my $rev_coord = 0;  # default: lat=... lon=...
 my $file;
 foreach (@ARGV) {
   my $arg = $_;
   if ($arg eq "-v") { Usage(1); }
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
+  elsif ($arg eq "-g") { $garmin_ext = 1; }
+  elsif ($arg eq "-c") { $garmin_ext = 0; }
+  elsif ($arg eq "-r") { $rev_coord = 1; }
   else { $file = $arg; }
 }
 
 Usage(0) if !defined $file;
-(my $slf_file = $file) =~ s/.fit$/.slf/i;
+(my $gpx_file = $file) =~ s/.fit$/.gpx/i;
 
-die "File $slf_file already exists\n" if -f $slf_file && !$overwrite;
+die "File $gpx_file already exists\n" if -f $gpx_file && !$overwrite;
 
 #------------------------------------------------------------------------------
 # Fit file reading
@@ -192,7 +197,7 @@ ReadIniFile($prog.".ini");
 
 #------------------------------------------------------------------------------
 # Convert and display fit file content in slf format
-PrintSlfData($slf_file);
+PrintGpxData($gpx_file);
 
 exit(0);
 # main
@@ -203,16 +208,22 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.05  Copyright (c) 2016 Matjaz Rihtar  (July 1, 2016)\n";
+    printf STDERR "fit2gpx 2.05  Copyright (c) 2016 Matjaz Rihtar  (July 1, 2016)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2015 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-g|-c] [-r] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
+    printf STDERR "  -g  Use Garmin extension format for hr/cad/temp (default)\n";
+    printf STDERR "      <gpxtpx:TrackPointExtension>, <gpxtpx:...>: atemp, hr, cad\n";
+    printf STDERR "  -c  Use Cluetrust extension format for hr/cad/temp\n";
+    printf STDERR "      <gpxdata:...>: temp, hr, cadence\n";
+    printf STDERR "  -r  Reverse print of lat and lon in trkpt entries\n";
+    printf STDERR "      Default: <trkpt lat=... lon=...>\n";
   }
   _exit(1);
 } # Usage
@@ -320,9 +331,6 @@ sub FillGlobalVars {
     elsif ($k eq "garmin_product") { $g_product = $v; }
     elsif ($k eq "serial_number") { $g_serial = $v; }
   }
-  # override manufacturer and product (required by Sigma Data Center)
-  $g_manuf = "SigmaSport";
-  $g_product = "rox100";
 
   # Find profile data in first user_profile
   $m = @{$profiles}[0];
@@ -423,21 +431,21 @@ sub FillGlobalVars {
     elsif ($k eq "max_power") { $g_maxPower = $v; } # invalid
   }
 
+  my @lt = localtime($g_startTime);
+  $f_startTime = POSIX::strftime("%d-%b-%y %H:%M", @lt);
+
+  $g_trackName = "Track ".$f_startTime;
+  my $product = ucfirst $g_product;
+  $g_description = ucfirst "$g_sport ($g_subSport) recorded on $g_manuf $product";
+
   # Some other defaults needed for the 1st call (overriden later)
   my $undef_homeAlt;
   if (!defined $g_homeAlt) { $g_homeAlt = 315; $undef_homeAlt = 1; }
   my $undef_bikeWeight;
   if (!defined $g_bikeWeight) { $g_bikeWeight = 12.3; $undef_bikeWeight = 1; }
 
-  # Redirect STDOUT to temporary file
-  open TMP, ">", undef or die $!."\n";
-  select TMP;
-
   # Calc missing aver/min/max alt, hr, cad and temp from all records
-  PrintSlfEntries();
-
-  select STDOUT;
-  close TMP;
+  ProcessRecords();
 
   if ($undef_age) { $g_age = undef; }
   if ($undef_hrMax) { $g_hrMax = undef; }
@@ -618,14 +626,6 @@ sub ReadIniFile {
 } # ReadIniFile
 
 #==============================================================================
-# Generate new GUID (required by Sigma Data Center)
-sub NewGuid {
-  my $ug = Data::UUID->new();
-  my $uuid = $ug->create_str();
-  return $uuid;
-} # NewGuid
-
-#==============================================================================
 # Calculate average value of an array
 sub Average {
   my $len = scalar @_;
@@ -656,333 +656,77 @@ sub Median {
 } # Median
 
 #==============================================================================
-# Print activity block (1st line, header) in slf
-sub PrintSlfHeader {
-  my @lt = localtime($g_startTime);
-  $f_startTime = POSIX::strftime("%a %b %e %T GMT%z %Y", @lt);
-  $f_startTime =~ s/ +/ /g;
+# Print gpx block (1st line, header) in gpx
+sub PrintGpxHeader {
+# <gpx version="1.1 [1]" creator="xsd:string [1]">
+#   <metadata> metadataType </metadata> [0..1]
+#   <wpt> wptType </wpt> [0..*]
+#   <rte> rteType </rte> [0..*]
+#   <trk> trkType </trk> [0..*]
+#   <extensions> extensionsType </extensions> [0..1]
+# </gpx>
 
-  printf "<Activity";
-  printf " fileDate=\"%s\"", $f_startTime;
-  printf " revision=\"400\"";
+  printf "<gpx %s", 'version="1.1" creator="fit2gpx by Matjaz Rihtar"';
+  my $loc = 'xsi:schemaLocation="';
+  $loc = $loc . "http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd";
+  $loc = $loc . " http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd";
+  $loc = $loc . " http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd";
+  $loc = $loc . " http://www.garmin.com/xmlschemas/WaypointExtension/v1 http://www.garmin.com/xmlschemas/WaypointExtensionv1.xsd";
+  $loc = $loc . " http://www.cluetrust.com/XML/GPXDATA/1/0 http://www.cluetrust.com/Schemas/gpxdata10.xsd";
+  $loc = $loc . '"';
+  printf " %s", $loc;
+  printf " %s", 'xmlns="http://www.topografix.com/GPX/1/1"';
+  printf " %s", 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"';
+  # garmin_ext
+  printf " %s", 'xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3"';
+  printf " %s", 'xmlns:gpxtrx="http://www.garmin.com/xmlschemas/GpxExtensions/v3"';
+  printf " %s", 'xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"';
+  printf " %s", 'xmlns:gpxwpx="http://www.garmin.com/xmlschemas/WaypointExtension/v1"';
+  # cluetrust_ext
+  printf " %s", 'xmlns:gpxdata="http://www.cluetrust.com/XML/GPXDATA/1/0"';
+  # trekbuddy_ext
+# printf " %s", 'xmlns:nmea="http://trekbuddy.net/2009/01/gpx/nmea"';
+# nmea:course, nmea:speed
   printf ">\n";
-} # PrintSlfHeader
+} # PrintGpxHeader
 
 #==============================================================================
-# Print computer block in slf
-sub PrintSlfComputer {
-  printf "%s<Computer", $indent;
-  printf " unit=\"%s\"", $g_product; # must be rox100!
-  printf " serial=\"%s\"", $g_serial;
-  printf " activityType=\"%s\"", "Cycling"; # always???
-  printf " dateCode=\"%s\"", $f_startTime;
-  printf "/>\n";
-} # PrintSlfComputer
+# Print metadata block in gpx
+sub PrintGpxMetadata {
+# <metadata>
+#   <name> xsd:string </name> [0..1]
+#   <desc> xsd:string </desc> [0..1]
+#   <author> personType </author> [0..1]
+#   <copyright> copyrightType </copyright> [0..1]
+#   <link> linkType </link> [0..*]
+#   <time> xsd:dateTime </time> [0..1]
+#   <keywords> xsd:string </keywords> [0..1]
+#   <bounds> boundsType </bounds> [0..1]
+#   <extensions> extensionsType </extensions> [0..1]
+# </metadata>
+#
+# <author>
+#   <name> xsd:string </name> [0..*]
+#   <email id="xsd:string [1]" domain="xsd:string [1]"/> [0..*]
+# </author>
 
-#==============================================================================
-# Print general information block in slf
-# Here every possible aver/min/max values are printed.
-sub PrintSlfGeneralInfo {
-  printf "%s<GeneralInformation>\n", $indent;
+  printf "%s<metadata>\n", $indent;
 
-  printf "%s<user", $indent x 2;
-  printf " color=\"%d\"", 255;
-  printf " gender=\"%s\">", $g_gender;
-  printf "<![CDATA[%s]]></user>\n", $g_name;
+  printf "%s<name>%s</name>\n", $indent x 2, $g_trackName;
+  printf "%s<desc>%s</desc>\n", $indent x 2, $g_description;
 
-  printf "%s<sport><![CDATA[%s]]></sport>\n",
-    $indent x 2, $g_sport;
-  printf "%s<age>%d</age>\n",
-    $indent x 2, $g_age;
-  printf "%s<GUID>%s</GUID>\n",
-    $indent x 2, NewGuid();
+  printf "%s<author>\n", $indent x 2;
+  printf "%s<name>%s</name>\n", $indent x 4, $g_name;
+  printf "%s</author>\n", $indent x 2;
 
-  printf "%s<altitudeDifferencesDownhill>%d</altitudeDifferencesDownhill>\n",
-    $indent x 2, $g_totDescent * 1000; # mm
-  printf "%s<altitudeDifferencesUphill>%d</altitudeDifferencesUphill>\n",
-    $indent x 2, $g_totAscent * 1000; # mm
+  printf "%s<link href=\"%s\">\n", $indent x 2, "http://acme.com/fit2gpx.pl";
+  printf "%s<text>%s</text>\n", $indent x 4, "fit2gpx by Matjaz Rihtar";
+  printf "%s</link>\n", $indent x 2;
 
-  printf "%s<averageAltitude>%d</averageAltitude>\n",
-    $indent x 2, Average(@$alts) * 1000; # mm
+  printf "%s<time>%s</time>\n", $indent x 2, $fit->date_string($g_startTime);
 
-  printf "%s<averageCadence>%g</averageCadence>\n",
-    $indent x 2, $g_avgCad;
-  printf "%s<averageHeartrate>%d</averageHeartrate>\n",
-    $indent x 2, $g_avgHr;
-
-  printf "%s<averageInclineDownhill>%.1f</averageInclineDownhill>\n",
-    $indent x 2, Average(@$inclDownhills) * 100; # %
-  printf "%s<averageInclineUphill>%.1f</averageInclineUphill>\n",
-    $indent x 2, Average(@$inclUphills) * 100; # %
-
-  my $pcHrMax;
-  if ($g_hrMax != 0) { $pcHrMax = $g_avgHr / $g_hrMax * 100; }
-  else { $pcHrMax = 0.0; }
-  printf "%s<averagePercentHRMax>%.1f</averagePercentHRMax>\n",
-    $indent x 2, $pcHrMax;
-
-  $g_avgPower = Average(@$powers) if !defined $g_avgPower;
-  printf "%s<averagePower>%.1f</averagePower>\n",
-    $indent x 2, $g_avgPower;
-  printf "%s<averagePowerKJ>%d</averagePowerKJ>\n",
-    $indent x 2, $g_avgPower * $g_totElapsTime / 1000; # E(KJ)= P(W) x t(s) / 1000
-  printf "%s<averagePowerWattPerKG>%.1f</averagePowerWattPerKG>\n",
-    $indent x 2, $g_avgPower / $g_weight;
-
-  printf "%s<averageRiseRate>%.1f</averageRiseRate>\n",
-    $indent x 2, Average(@$riseRates) * 1000; # mm
-  printf "%s<averageRiseRateUphill>%.1f</averageRiseRateUphill>\n",
-    $indent x 2, Average(@$riseRateUphills) * 1000; # mm/min
-  printf "%s<averageRiseRateDownhill>%.1f</averageRiseRateDownhill>\n",
-    $indent x 2, Average(@$riseRateDownhills) * 1000; # mm/min
-
-  printf "%s<averageSpeed>%.1f</averageSpeed>\n",
-    $indent x 2, $g_avgSpeed / 3.6; # m/s
-  printf "%s<averageSpeedDownhill>%.1f</averageSpeedDownhill>\n",
-    $indent x 2, Average(@$speedDownhills); # already in m/s
-  printf "%s<averageSpeedUphill>%.1f</averageSpeedUphill>\n",
-    $indent x 2, Average(@$speedUphills); # already in m/s
-
-  printf "%s<averageTemperature>%.1f</averageTemperature>\n",
-    $indent x 2, Median(@$temps);
-
-  printf "%s<bike>%s</bike>\n",
-    $indent x 2, $g_bike;
-  printf "%s<bikeWeight>%g</bikeWeight>\n",
-    $indent x 2, $g_bikeWeight * 1000; # g
-  printf "%s<bikeWeightUnit>%s</bikeWeightUnit>\n",
-    $indent x 2, "g";
-
-  printf "%s<bodyHeight>%g</bodyHeight>\n",
-    $indent x 2, $g_height * 1000; # mm
-  printf "%s<bodyHeightUnit>%s</bodyHeightUnit>\n",
-    $indent x 2, "mm";
-  printf "%s<bodyWeight>%.1f</bodyWeight>\n",
-    $indent x 2, $g_weight * 1000; # g
-  printf "%s<bodyWeightUnit>%s</bodyWeightUnit>\n",
-    $indent x 2, "g";
-
-  printf "%s<calories>%d</calories>\n",
-    $indent x 2, $g_totCal;
-  printf "%s<caloriesDifferenceFactor>%g</caloriesDifferenceFactor>\n",
-    $indent x 2, 0.0; # ???
-
-  printf "%s<description><![CDATA[%s]]></description>\n",
-    $indent x 2, $g_description;
-
-  printf "%s<distance>%.1f</distance>\n",
-    $indent x 2, $g_totDistance; # m
-  printf "%s<distanceDownhill>%.1f</distanceDownhill>\n",
-    $indent x 2, $g_distDownhill; # m
-  printf "%s<distanceUphill>%.1f</distanceUphill>\n",
-    $indent x 2, $g_distUphill; # m
-
-  printf "%s<exerciseTime>%g</exerciseTime>\n",
-    $indent x 2, $g_totElapsTime * 100; # 1/100 sec
-
-  printf "%s<externalLink><![CDATA[%s]]></externalLink>\n",
-    $indent x 2, ""; # not yet known
-  printf "%s<gender>%s</gender>\n",
-    $indent x 2, $g_gender;
-  printf "%s<hrMax>%d</hrMax>\n",
-    $indent x 2, $g_hrMax;
-
-  printf "%s<intensityZone1Start>%d</intensityZone1Start>\n",
-    $indent x 2, $g_iZone1s;
-  printf "%s<intensityZone2Start>%d</intensityZone2Start>\n",
-    $indent x 2, $g_iZone2s;
-  printf "%s<intensityZone3Start>%d</intensityZone3Start>\n",
-    $indent x 2, $g_iZone3s;
-  printf "%s<intensityZone4Start>%d</intensityZone4Start>\n",
-    $indent x 2, $g_iZone4s;
-  printf "%s<intensityZone4End>%d</intensityZone4End>\n",
-    $indent x 2, $g_iZone4e;
-
-  printf "%s<latitudeEnd>%.7f</latitudeEnd>\n",
-    $indent x 2, $g_endLat;
-  printf "%s<latitudeStart>%.7f</latitudeStart>\n",
-    $indent x 2, $g_startLat;
-  printf "%s<longitudeEnd>%.7f</longitudeEnd>\n",
-    $indent x 2, $g_endLon;
-  printf "%s<longitudeStart>%.7f</longitudeStart>\n",
-    $indent x 2, $g_startLon;
-
-  printf "%s<lowerLimit>%d</lowerLimit>\n",
-    $indent x 2, $g_targetZoneStart; # HR target zone start
-  printf "%s<manualTemperature>%g</manualTemperature>\n",
-    $indent x 2, 0; # ???
-
-  printf "%s<maximumAltitude>%.1f</maximumAltitude>\n",
-    $indent x 2, $g_maxAlt * 1000; # mm
-  printf "%s<maximumCadence>%d</maximumCadence>\n",
-    $indent x 2, $g_maxCad;
-  printf "%s<maximumHeartrate>%d</maximumHeartrate>\n",
-    $indent x 2, $g_maxHr;
-  printf "%s<maximumIncline>%g</maximumIncline>\n",
-    $indent x 2, $g_maxIncl * 100; # %
-  printf "%s<maximumInclineDownhill>%g</maximumInclineDownhill>\n",
-    $indent x 2, $g_minIncl * 100; # %, approx???
-  printf "%s<maximumInclineUphill>%g</maximumInclineUphill>\n",
-    $indent x 2, $g_maxIncl * 100; # %, approx???
-
-  if ($g_hrMax != 0) { $pcHrMax = $g_maxHr / $g_hrMax * 100; }
-  else { $pcHrMax = 0.0; }
-  printf "%s<maximumPercentHRMax>%.1f</maximumPercentHRMax>\n",
-    $indent x 2, $pcHrMax;
-
-  $g_maxPower = 0 if !defined $g_maxPower;
-  printf "%s<maximumPower>%d</maximumPower>\n",
-    $indent x 2, $g_maxPower;
-
-  printf "%s<maximumRiseRate>%.1f</maximumRiseRate>\n",
-    $indent x 2, $g_maxRiseRate * 1000; # mm
-  printf "%s<maximumSpeed>%.1f</maximumSpeed>\n",
-    $indent x 2, $g_maxSpeed / 3.6; # m/s
-  printf "%s<maximumTemperature>%.1f</maximumTemperature>\n",
-    $indent x 2, $g_maxTemp;
-
-  printf "%s<measurement>%s</measurement>\n",
-    $indent x 2, "kmh";
-
-  printf "%s<minimumAltitude>%d</minimumAltitude>\n",
-    $indent x 2, $g_minAlt * 1000; # mm
-  printf "%s<minimumCadence>%d</minimumCadence>\n",
-    $indent x 2, 0; # always zero???
-  printf "%s<minimumHeartrate>%d</minimumHeartrate>\n",
-    $indent x 2, $g_minHr;
-  printf "%s<minimumIncline>%.1f</minimumIncline>\n",
-    $indent x 2, $g_minIncl * 100; # %, zero???
-
-  if ($g_hrMax != 0) { $pcHrMax = $g_minHr / $g_hrMax * 100; }
-  else { $pcHrMax = 0.0; }
-  printf "%s<minimumPercentHRMax>%.1f</minimumPercentHRMax>\n",
-    $indent x 2, $pcHrMax;
-
-  printf "%s<minimumPower>%d</minimumPower>\n",
-    $indent x 2, 0; # always zero???
-  printf "%s<minimumRiseRate>%.1f</minimumRiseRate>\n",
-    $indent x 2, $g_minRiseRate * 1000; # mm
-  printf "%s<minimumSpeed>%d</minimumSpeed>\n",
-    $indent x 2, 0 / 3.6; # m/s, always zero???
-  printf "%s<minimumTemperature>%.1f</minimumTemperature>\n",
-    $indent x 2, $g_minTemp;
-
-  printf "%s<name><![CDATA[%s]]></name>\n",
-    $indent x 2, $g_trackName;
-  printf "%s<pageHeaderData>%s</pageHeaderData>\n",
-    $indent x 2, ""; # comma separated array of numbers???
-
-  printf "%s<pauseTime>%d</pauseTime>\n",
-    $indent x 2, $g_pauseTime * 100; # 1/100 sec
-
-  printf "%s<powerZone1Start>%d</powerZone1Start>\n",
-    $indent x 2, $g_pZone1s; # W
-  printf "%s<powerZone2Start>%d</powerZone2Start>\n",
-    $indent x 2, $g_pZone2s; # W
-  printf "%s<powerZone3Start>%d</powerZone3Start>\n",
-    $indent x 2, $g_pZone3s; # W
-  printf "%s<powerZone4Start>%d</powerZone4Start>\n",
-    $indent x 2, $g_pZone4s; # W
-  printf "%s<powerZone5Start>%d</powerZone5Start>\n",
-    $indent x 2, $g_pZone5s; # W
-  printf "%s<powerZone6Start>%d</powerZone6Start>\n",
-    $indent x 2, $g_pZone6s; # W
-  printf "%s<powerZone7End>%d</powerZone7End>\n",
-    $indent x 2, $g_pZone7e; # W
-  printf "%s<powerZone7Start>%d</powerZone7Start>\n",
-    $indent x 2, $g_pZone7s; # W
-
-  printf "%s<rating>%d</rating>\n",
-    $indent x 2, 1; # 1 = 1 star???
-  printf "%s<feeling>%d</feeling>\n",
-    $indent x 2, 2; # 2 = neutral???
-
-  printf "%s<trainingTimeDownhill>%d</trainingTimeDownhill>\n",
-    $indent x 2, $g_timeDownhill * 100; # 1/100 sec
-  printf "%s<trainingTimeUphill>%d</trainingTimeUphill>\n",
-    $indent x 2, $g_timeUphill * 100; # 1/100 sec
-
-  printf "%s<samplingRate>%d</samplingRate>\n",
-    $indent x 2, 5; # sec???
-
-  printf "%s<shoulderWidth>%d</shoulderWidth>\n",
-    $indent x 2, 0; # ???
-  printf "%s<shoulderWidthUnit>%s</shoulderWidthUnit>\n",
-    $indent x 2, "cm";
-
-  printf "%s<startDate>%s</startDate>\n",
-    $indent x 2, $f_startTime;
-  printf "%s<statistic>%s</statistic>\n",
-    $indent x 2, "true";
-
-  printf "%s<thresholdPower>%d</thresholdPower>\n",
-    $indent x 2, $g_funcThresPower;
-
-  printf "%s<timeInIntensityZone1>%d</timeInIntensityZone1>\n",
-    $indent x 2, $g_timeInIntZone1 * 100; # 1/100 sec
-  printf "%s<timeInIntensityZone2>%d</timeInIntensityZone2>\n",
-    $indent x 2, $g_timeInIntZone2 * 100; # 1/100 sec
-  printf "%s<timeInIntensityZone3>%d</timeInIntensityZone3>\n",
-    $indent x 2, $g_timeInIntZone3 * 100; # 1/100 sec
-  printf "%s<timeInIntensityZone4>%d</timeInIntensityZone4>\n",
-    $indent x 2, $g_timeInIntZone4 * 100; # 1/100 sec
-  printf "%s<timeInTargetZone>%d</timeInTargetZone>\n",
-    $indent x 2, $g_timeInTargetZone * 100; # 1/100 sec
-
-  printf "%s<timeOverIntensityZone>%d</timeOverIntensityZone>\n",
-    $indent x 2, $g_timeOverIntZone * 100; # 1/100 sec
-  printf "%s<timeOverTargetZone>%d</timeOverTargetZone>\n",
-    $indent x 2, $g_timeOverTargetZone * 100; # 1/100 sec
-  printf "%s<timeUnderIntensityZone>%d</timeUnderIntensityZone>\n",
-    $indent x 2, $g_timeUnderIntZone * 100; # 1/100 sec
-  printf "%s<timeUnderTargetZone>%d</timeUnderTargetZone>\n",
-    $indent x 2, $g_timeUnderTargetZone * 100; # 1/100 sec
-
-  printf "%s<trackProfile>%d</trackProfile>\n",
-    $indent x 2, 0; # ???
-
-  printf "%s<trainingTime>%d</trainingTime>\n",
-    $indent x 2, $g_totElapsTime * 100; # 1/100 sec
-
-  printf "%s<trainingType>%s</trainingType>\n",
-    $indent x 2, ucfirst $g_trainType;
-
-  # SigmaSport: fitZone, fatZone, ownZone, ownZone1, ownZone2, ownZone3
-  printf "%s<trainingZone>%s</trainingZone>\n",
-    $indent x 2, "fitZone"; # ???
-
-  printf "%s<upperLimit>%d</upperLimit>\n",
-    $indent x 2, $g_targetZoneEnd; # HR target zone end
-
-  printf "%s<weather>%d</weather>\n",
-    $indent x 2, 0; # 0 = cloudless???
-
-  printf "%s<wheelSize>%d</wheelSize>\n",
-    $indent x 2, $g_wheelSize;
-
-  printf "%s<wind>%d</wind>\n",
-    $indent x 2, 0; # 0 = 0 Bft/Calm???
-
-  printf "%s<workInKJ>%.1f</workInKJ>\n",
-    $indent x 2, $g_totCal * 4.1868 * 0.225; # for international kcal with 22.5% efficiency
-
-  printf "%s<zone1Start>%d</zone1Start>\n",
-    $indent x 2, 0; # which zone???
-  printf "%s<zone2Start>%d</zone2Start>\n",
-    $indent x 2, 0; # which zone???
-  printf "%s<zone3End>%d</zone3End>\n",
-    $indent x 2, 0; # which zone???
-  printf "%s<zone3Start>%d</zone3Start>\n",
-    $indent x 2, 0; # which zone???
-
-  printf "%s<sharingInfo>%s</sharingInfo>\n",
-    $indent x 2, "{\"twitterId\":\"0\",\"twoPeaksId\":\"0\",\"stravaId\":\"0\",\"facebookId\":\"0\",\"trainingPeaksId\":\"0\"}";
-
-  printf "%s<Participant>%s</Participant>\n",
-    $indent x 2, ""; # training partner, manual entry???
-
-  printf "%s</GeneralInformation>\n", $indent;
-} # PrintSlfGeneralInfo
+  printf "%s</metadata>\n", $indent;
+} # PrintGpxMetadata
 
 #==============================================================================
 # Simple Kalman filtering routines (used as low-pass filter) for smoothing data
@@ -1079,12 +823,9 @@ sub FilterAlt {
 } # FilterAlt
 
 #==============================================================================
-# Print all track points (entries block) from fit file
-# Because this routine is called twice, initialize all used variables at the
-# beginning.
-sub PrintSlfEntries {
-  printf "%s<Entries>\n", $indent;
-
+# Process all track points (records) from fit file
+# This routine is called for calculating missing aver/min/max values only!
+sub ProcessRecords {
   # Initialize arrays
   $alts = [];
   $hrs = [];
@@ -1125,18 +866,16 @@ sub PrintSlfEntries {
 
   my $fai = 0; # filtered alt index
   foreach (@$records) {
-    PrintSlfEntry(\%$_, \$fai);
+    ProcessRecord(\%$_, \$fai);
   }
-
-  printf "%s</Entries>\n", $indent;
-} # PrintSlfEntries
+} # ProcessRecords
 
 #==============================================================================
-# Print single track point from fit file
-# This routine also stores all/min/max values for later aver/min/max processing.
+# Process single track point (record) from fit file
+# This routine stores all/min/max values for later aver/min/max processing.
 # Power is calculated according to J.C. Martin et al. (1998).
 # For power and incline calculation smoothed altitude data is used.
-sub PrintSlfEntry {
+sub ProcessRecord {
   my $m = shift;
   my %mh = %$m;
   my $fai = shift; # pointer to filtered alt index
@@ -1160,8 +899,6 @@ sub PrintSlfEntry {
   }
 
   if (defined $timestamp) {
-    printf "%s<Entry", $indent x 2;
-
     if (!defined $lat) { $lat = $prev_lat; }
     if (!defined $lon) { $lon = $prev_lon; }
     if (!defined $dist) { $dist = $prev_dist[-1]; }
@@ -1254,19 +991,19 @@ sub PrintSlfEntry {
   # printf STDERR "distDiff = %g, altDiff = %g\n", $prev_distDiff[-1], $prev_altDiff[-1];
   # printf STDERR "totDistDiff = %g, totAltDiff = %g\n", $totDistDiff, $totAltDiff;
 
-    printf " altitude=\"%.1f\"", $alt * 1000; # mm
+    #done: altitude = $alt
     if ($altDiff < 0) {
-      printf " altitudeDifferencesDownhill=\"%.1f\"", abs($altDiff) * 1000; # mm
-      printf " altitudeDifferencesUphill=\"%g\"", 0;
+      #done: altitudeDifferencesDownhill = abs($altDiff)
+      #done: altitudeDifferencesUphill = 0
       if ($speed > 0) { push @$speedDownhills, $speed; }
     }
     else {
-      printf " altitudeDifferencesDownhill=\"%g\"", 0;
-      printf " altitudeDifferencesUphill=\"%.1f\"", $altDiff * 1000; # mm
+      #done: altitudeDifferencesDownhill = 0
+      #done: altitudeDifferencesUphill = abs($altDiff)
       if ($speed > 0) { push @$speedUphills, $speed; }
     }
 
-    printf " cadence=\"%d\"", $cad;
+    #done: cadence = $cad
 
     my $time = $timestamp - $prev_timestamp; # sec
     shift @prev_time;
@@ -1278,22 +1015,22 @@ sub PrintSlfEntry {
     # cal = % totCal +/- diff(hr, avgHr) % totCal
     my $ct = $g_totCal*$time/$g_totElapsTime;
     my $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct;
-    printf " calories=\"%.6f\"", $cal;
+    #done: calories = $cal
 
-    printf " distanceAbsolute=\"%.1f\"", $dist;
-    printf " distance=\"%.1f\"", $distDiff;
+    #done: distanceAbsolute = $dist
+    #done: distance = $distDiff
     if ($altDiff < 0) {
-      printf " distanceDownhill=\"%.1f\"", $distDiff;
-      printf " distanceUphill=\"%g\"", 0;
+      #done: distanceDownhill = $distDiff
+      #done: distanceUphill = 0
       $g_distDownhill += $distDiff;
     }
     else {
-      printf " distanceDownhill=\"%g\"", 0;
-      printf " distanceUphill=\"%.1f\"", $distDiff;
+      #done: distanceDownhill = 0
+      #done: distanceUphill = $distDiff
       $g_distUphill += $distDiff;
     }
 
-    printf " heartrate=\"%d\"", $hr;
+    #done: heartrate = $hr
 
     # fix error in incline
     my $incl;
@@ -1320,7 +1057,7 @@ sub PrintSlfEntry {
     else {
       push @$inclUphills, $incl;
     }
-    printf " incline=\"%g\"", $incl * 100; # %
+    #done: incline = $incl * 100 # %
   # printf STDERR "incline = %g\n", $incl;
 
     my $iZone;
@@ -1330,15 +1067,15 @@ sub PrintSlfEntry {
     elsif ($hr <= $g_iZone4s) { $iZone = 3; }
     elsif ($hr <= $g_iZone4e) { $iZone = 4; }
     else { $iZone = 5; }
-    printf " intensityZone=\"%g\"", $iZone;
+    #done: intensityZone = $iZone
 
-    printf " latitude=\"%.7f\"", $lat;
-    printf " longitude=\"%.7f\"", $lon;
+    #done: latitude = $lat
+    #done: longitude = $lon
 
     my $pcHrMax;
     if ($g_hrMax != 0) { $pcHrMax = $hr / $g_hrMax * 100; }
     else { $pcHrMax = 0.0; }
-    printf " percentHRMax=\"%.1f\"", $pcHrMax;
+    #done: percentHRMax = $pcHrMax
 
     #------------------------------
     # Power calculation
@@ -1404,10 +1141,8 @@ sub PrintSlfEntry {
     elsif ($power > $g_maxPower) { $g_maxPower = $power; }
     push @$powers, $power;
 
-    printf " power=\"%.6f\"", $power;
-    printf " powerPerKG=\"%.6f\"", $power / $g_weight;
-
-    printf " relativeRotations=\"%.g\"", 0; # ???
+    #done: power = $power
+    #done: powerPerKG = $power / $g_weight
 
     my $totTimeDiff = sum(@prev_time);
     $totAltDiff = sum(@prev_altDiff);
@@ -1423,14 +1158,9 @@ sub PrintSlfEntry {
     else {
       push @$riseRateUphills, $riseRate;
     }
-    printf " riseRate=\"%.1f\"", $riseRate * 1000; # mm/min
+    #done: riseRate = $riseRate # m/min
 
-    printf " rotations=\"%.g\"", 0; # ???
-
-    printf " speed=\"%.4f\"", $speed;
-    printf " speedReference=\"%s\"", "sensor"; 
-
-    printf " speedTime=\"%g\"", 0; # ???
+    #done: speed = $speed
 
     my $targetZone; # 0 = below, 1 = inside, 2 = above
     if ($hr < $g_targetZoneStart) { # inconsistent (as in Sigma Data Center)
@@ -1442,7 +1172,7 @@ sub PrintSlfEntry {
     else {
       $g_timeInTargetZone += $time; $targetZone = 1;
     }
-    printf " targetZone=\"%g\"", $targetZone;
+    #done: targetZone = $targetZone
 
     # time in intensity zones
     if ($hr <= $g_iZone1s) { $g_timeUnderIntZone += $time; }
@@ -1452,25 +1182,25 @@ sub PrintSlfEntry {
     elsif ($hr > $g_iZone4s && $hr <= $g_iZone4e) { $g_timeInIntZone4 += $time; }
     elsif ($hr > $g_iZone4e) { $g_timeOverIntZone += $time; }
 
-    printf " temperature=\"%.1f\"", $temp;
+    #done: temperature = $temp
 
     $tot_time += $time;
-    printf " trainingTime=\"%.1f\"", $time * 100; # 1/100 sec
-    printf " trainingTimeAbsolute=\"%.1f\"", $tot_time * 100; # 1/100 sec
+    #done: trainingTime = $time
+    #done: trainingTimeAbsolute = $tot_time
     if ($altDiff < 0) {
-      printf " trainingTimeDownhill=\"%.1f\"", $time * 100; # 1/100 sec
-      printf " trainingTimeUphill=\"%g\"", 0;
+      #done: trainingTimeDownhill = $time
+      #done: trainingTimeUphill = 0
       $g_timeDownhill += $time;
     }
     else {
-      printf " trainingTimeDownhill=\"%g\"", 0;
-      printf " trainingTimeUphill=\"%.1f\"", $time * 100; # 1/100 sec
+      #done: trainingTimeDownhill = 0
+      #done: trainingTimeUphill = $time
       $g_timeUphill += $time;
     }
 
     # Work for international kcal (with 20%-25% efficiency, aver. 22.5%)
     # work[kJ] = energy[kcal] * 4.1868 * 0.225
-    printf " workInKJ=\"%.1f\"", $cal * 4.1868 * 0.225;
+    #done: workInKJ = $cal * 4.1868 * 0.225
 
     my $powerZone;
     if ($power < $g_pZone1s) { $powerZone = 0; }
@@ -1482,9 +1212,7 @@ sub PrintSlfEntry {
     elsif ($power >= $g_pZone6s && $power < $g_pZone7s) { $powerZone = 6; }
     elsif ($power >= $g_pZone7s && $power < $g_pZone7e) { $powerZone = 7; }
     elsif ($power >= $g_pZone7e) { $powerZone = 8; }
-    printf " powerZone=\"%g\"", $powerZone;
-
-    printf "/>\n";
+    #done: powerZone = $powerZone
 
     $prev_timestamp = $timestamp;
     $prev_lat = $lat;
@@ -1498,55 +1226,427 @@ sub PrintSlfEntry {
     $prev_cad = $cad;
     $prev_temp = $temp;
   }
-} # PrintSlfEntry
+} # ProcessRecord
 
 #==============================================================================
-# Print all lap entries (markers block) from fit file
-sub PrintSlfMarkers {
-  printf "%s<Markers>\n", $indent;
+# Print all track points (trk block) from fit file
+sub PrintGpxTracks {
+# <trk>
+#   <name> xsd:string </name> [0..1]
+#   <cmt> xsd:string </cmt> [0..1]
+#   <desc> xsd:string </desc> [0..1]
+#   <src> xsd:string </src> [0..1]
+#   <link> linkType </link> [0..*]
+#   <number> xsd:nonNegativeInteger </number> [0..1]
+#   <type> xsd:string </type> [0..1]
+#   <extensions> extensionsType </extensions> [0..1]
+#   <trkseg> trksegType </trkseg> [0..*]
+# </trk>
+#
+# <trkseg>
+#   <trkpt> wptType </trkpt> [0..*]
+#   <extensions> extensionsType </extensions> [0..1]
+# </trkseg>
 
+  printf "%s<trk>\n", $indent;
+
+  printf "%s<name>%s</name>\n", $indent x 2, $g_trackName;
+  printf "%s<desc>%s</desc>\n", $indent x 2, $g_description;
+  printf "%s<type>%s</type>\n", $indent x 2, ucfirst $g_sport;
+
+  printf "%s<trkseg>\n", $indent x 2;
+  foreach (@{$records}) {
+    PrintGpxTrkpt(\%$_);
+  }
+  printf "%s</trkseg>\n", $indent x 2;
+
+  printf "%s</trk>\n", $indent;
+} # PrintGpxTracks
+
+#==============================================================================
+# Print single track point from fit file
+# Additional data (heart rate, cadence, temperature & power data) is formatted
+# according to selected GPX extension.
+sub PrintGpxTrkpt {
+# <trkpt lat="latitudeType [1]" lon="longitudeType [1]">
+#   <ele> xsd:decimal </ele> [0..1]
+#   <time> xsd:dateTime </time> [0..1]
+#   <magvar> degreesType </magvar> [0..1]
+#   <geoidheight> xsd:decimal </geoidheight> [0..1]
+#   <name> xsd:string </name> [0..1]
+#   <cmt> xsd:string </cmt> [0..1]
+#   <desc> xsd:string </desc> [0..1]
+#   <src> xsd:string </src> [0..1]
+#   <link> linkType </link> [0..*]
+#   <sym> xsd:string </sym> [0..1]
+#   <type> xsd:string </type> [0..1]
+#   <fix> fixType </fix> [0..1]
+#   <sat> xsd:nonNegativeInteger </sat> [0..1]
+#   <hdop> xsd:decimal </hdop> [0..1]
+#   <vdop> xsd:decimal </vdop> [0..1]
+#   <pdop> xsd:decimal </pdop> [0..1]
+#   <ageofdgpsdata> xsd:decimal </ageofdgpsdata> [0..1]
+#   <dgpsid> dgpsStationType </dgpsid> [0..1]
+#   <extensions> extensionsType </extensions> [0..1]
+# </trkpt>
+
+  my $m = shift;
+  my %mh = %$m;
+
+  my $timestamp = undef;
+  my $lon = undef; my $lat = undef;
+  my $ele = undef;
+
+  my $hr = undef; my $cad = undef; my $temp = undef;
+
+  my $k; my $v;
+  while (($k, $v) = each %mh) {
+    # mandatory
+    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
+    elsif ($k eq "position_long") { $lon = $v; }
+    elsif ($k eq "position_lat") { $lat = $v; }
+    # optional
+    elsif ($k eq "altitude") { $ele = $v; }
+    elsif ($k eq "heart_rate") { $hr = $v; }
+    elsif ($k eq "cadence") { $cad = $v; }
+    elsif ($k eq "temperature") { $temp = $v; }
+  }
+
+  if (defined $timestamp) {
+    if ($rev_coord) {
+      printf "%s<trkpt lon=\"%s\" lat=\"%s\">\n", $indent x 3, $lon, $lat;
+    }
+    else {
+      printf "%s<trkpt lat=\"%s\" lon=\"%s\">\n", $indent x 3, $lat, $lon;
+    }
+    printf "%s<ele>%s</ele>\n", $indent x 4, $ele;
+    printf "%s<time>%s</time>\n", $indent x 4, $fit->date_string($timestamp);
+
+    if (defined $hr or defined $cad or defined $temp) {
+      printf "%s<extensions>\n", $indent x 4;
+
+      if ($garmin_ext) { printf "%s<gpxtpx:TrackPointExtension>\n", $indent x 5; }
+
+      if (defined $hr) {
+        if ($garmin_ext) {
+          printf "%s<gpxtpx:hr>%s</gpxtpx:hr>\n", $indent x 6, $hr;
+        }
+        else { # cluetrust_ext
+          printf "%s<gpxdata:hr>%s</gpxdata:hr>\n", $indent x 5, $hr;
+        }
+      }
+
+      if (defined $cad) {
+        if ($garmin_ext) {
+          printf "%s<gpxtpx:cad>%s</gpxtpx:cad>\n", $indent x 6, $cad;
+        }
+        else { # cluetrust_ext
+          printf "%s<gpxdata:cadence>%s</gpxdata:cadence>\n", $indent x 5, $cad;
+        }
+      }
+
+      if (defined $temp) {
+        if ($garmin_ext) {
+          printf "%s<gpxtpx:atemp>%s</gpxtpx:atemp>\n", $indent x 6, $temp;
+        }
+        else { # cluetrust_ext
+          printf "%s<gpxdata:temp>%s</gpxdata:temp>\n", $indent x 5, $temp;
+        }
+      }
+
+      if ($garmin_ext) { printf "%s</gpxtpx:TrackPointExtension>\n", $indent x 5; }
+
+      printf "%s</extensions>\n", $indent x 4;
+    }
+
+    printf "%s</trkpt>\n", $indent x 3;
+    $tot_records++;
+  }
+} # PrintGpxTrkpt
+
+#==============================================================================
+# Print all lap entries (gpx extensions block) from fit file
+sub PrintGpxExtensions {
+# See https://github.com/pytrainer/pytrainer/wiki/Sample-GPX-
+
+  printf "%s<extensions>\n", $indent;
+
+  # Cluetrust extension, ignored by Garmin
   my $lap_index = 1;
-  foreach (@$laps) {
-    PrintSlfMarker(\%$_, $lap_index);
+  foreach (@{$laps}) {
+    PrintGpxLap(\%$_, $lap_index);
     $lap_index++;
   }
 
-  printf "%s</Markers>\n", $indent;
-} # PrintSlfMarkers
+  printf "%s</extensions>\n", $indent;
+} # PrintGpxExtensions
 
 #==============================================================================
-# Print sigle lap entry (= marker by SigmaSport) from fit file
-# Currently does nothing because of unknown format of a marker.
-sub PrintSlfMarker {
+# Print sigle lap entry (gpxdata block) from fit file
+sub PrintGpxLap {
+# <gpxdata:lap>
+#   <gpxdata:index> xsd:int </gpxdata:index> [0..1]
+#   <gpxdata:startPoint> locationType </gpxdata:startPoint> [0..1]
+#   <gpxdata:endPoint> locationType </gpxdata:endPoint> [0..1]
+#   <gpxdata:startTime> xsd:dateTime </gpxdata:startTime> [0..1]
+#   <gpxdata:elapsedTime> xsd:float </gpxdata:elapsedTime> [0..1]
+#   <gpxdata:calories> xsd:nonNegativeInteger </gpxdata:calories> [0..1]
+#   <gpxdata:distance> xsd:float <gpxdata:distance> [0..1]
+#   <gpxdata:trackReference> trackReferenceType </gpxdata:trackReference> [0..1]
+#   <gpxdata:summary> summaryType </gpxdata:summary> [0..*]
+#   <gpxdata:trigger> triggerType </gpxdata:trigger> [0..1]
+#   <gpxdata:intensity> intensityKind </gpxdata:intensity> [0..1]
+#     intensityKind (xsd:token): rest, active
+# </gpxdata:lap>
+#
+# <gpxdata:startPoint lat="latitudeType [1]" lon="longitudeType [1]"/>
+# <gpxdata:endPoint lat="latitudeType [1]" lon="longitudeType [1]"/>
+# <gpxdata:summary name="xsd:string [1]" kind="summaryKind [1]"> xsd:decimal </gpxdata:summary>
+#   summaryKind (xsd:token): min, max, avg
+# <gpxdata:trigger kind="triggerKind [1]"/>
+#   triggerKind (xsd:token): manual, time, distance, location, hr
+
   my $m = shift;
   my %mh = %$m;
   my $lap_index = shift;
 
-} # PrintSlfMarker
+  my $timestamp = undef; my $stime = undef;
+  my $startlon = undef; my $startlat = undef;
+  # endlon and endlat are not present in session!
+  my $endlon = undef; my $endlat = undef;
+  my $tetime = undef; my $tttime = undef; my $tstanding = undef;
+  my $tdistance = undef; my $tcycles = undef; my $tcal = undef;
+  my $avgspeed = undef; my $maxspeed = undef;
+  my $tascent = undef; my $tdescent = undef;
+  my $avghr = undef; my $maxhr = undef;
+  my $avgcad = undef; my $maxcad = undef;
+  my $avgpower = undef; my $maxpower = undef;
+  my $ltrigger = undef;
+
+  my $k; my $v;
+  while (($k, $v) = each %mh) {
+    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
+    elsif ($k eq "start_time") { $stime = $v; } # + $timeoffs; }
+    elsif ($k eq "start_position_lat") { $startlat = $v; }
+    elsif ($k eq "start_position_long") { $startlon = $v; }
+    elsif ($k eq "end_position_lat") { $endlat = $v; }
+    elsif ($k eq "end_position_long") { $endlon = $v; }
+    elsif ($k eq "total_elapsed_time") { $tetime = $v; }
+    elsif ($k eq "total_timer_time") { $tttime = $v; }
+    elsif ($k eq "time_standing") { $tstanding = $v; } # invalid
+    elsif ($k eq "total_distance") { $tdistance = $v; } # m
+    elsif ($k eq "total_cycles") { $tcycles = $v; }
+    elsif ($k eq "total_calories") { $tcal = $v; }
+    elsif ($k eq "time_in_hr_zone") { $g_timeHrZone = $v; } # array
+    elsif ($k eq "avg_speed") { $avgspeed = $v; }
+    elsif ($k eq "max_speed") { $maxspeed = $v; }
+    elsif ($k eq "total_ascent") { $tascent = $v; }
+    elsif ($k eq "total_descent") { $tdescent = $v; }
+    elsif ($k eq "avg_heart_rate") { $avghr = $v; }
+    elsif ($k eq "max_heart_rate") { $maxhr = $v; }
+    elsif ($k eq "avg_cadence") { $avgcad = $v; }
+    elsif ($k eq "max_cadence") { $maxcad = $v; }
+    elsif ($k eq "avg_power") { $avgpower = $v; } # invalid
+    elsif ($k eq "max_power") { $maxpower = $v; } # invalid
+    elsif ($k eq "lap_trigger") { $ltrigger = conv_trigger($v); }
+  }
+
+  if (defined $timestamp) {
+    printf "%s<gpxdata:lap>\n", $indent x 2;
+
+    printf "%s<gpxdata:index>%d</gpxdata:index>\n", $indent x 3, $lap_index;
+    if ($rev_coord) {
+      printf "%s<gpxdata:startPoint lon=\"%s\" lat=\"%s\"/>\n", $indent x 3, $startlon, $startlat;
+    }
+    else {
+      printf "%s<gpxdata:startPoint lat=\"%s\" lon=\"%s\"/>\n", $indent x 3, $startlat, $startlon;
+    }
+    if ($rev_coord) {
+      printf "%s<gpxdata:endPoint lon=\"%s\" lat=\"%s\"/>\n", $indent x 3, $endlon, $endlat;
+    }
+    else {
+      printf "%s<gpxdata:endPoint lat=\"%s\" lon=\"%s\"/>\n", $indent x 3, $endlat, $endlon;
+    }
+
+    printf "%s<gpxdata:startTime>%s</gpxdata:startTime>\n",
+      $indent x 3, $fit->date_string($stime);
+    printf "%s<gpxdata:elapsedTime>%.1f</gpxdata:elapsedTime>\n",
+      $indent x 3, $tetime;
+    my $h; my $m; my $s;
+    { use integer; $h = $tetime / 3600; }
+    $tetime -= $h * 3600;
+    { use integer; $m = $tetime / 60; }
+    $s = $tetime - $m * 60;
+    printf "%s<!-- elapsedTime>%d:%02d:%04.1f</elapsedTime -->\n",
+      $indent x 3, $h, $m, $s;
+
+    printf "%s<gpxdata:calories>%s</gpxdata:calories>\n",
+      $indent x 3, $tcal;
+    printf "%s<gpxdata:distance>%.1f</gpxdata:distance>\n",
+      $indent x 3, $tdistance;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_speed", "avg", $avgspeed;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "max_speed", "max", $maxspeed;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "min_altitude", "min", $g_minAlt;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_altitude", "avg", Average(@$alts);
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "max_altitude", "max", $g_maxAlt;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "total_ascent", "max", $tascent;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "total_descent", "max", $tdescent;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "distance_uphill", "max", $g_distUphill;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "distance_downhill", "max", $g_distDownhill;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_incline_uphill", "avg", Average(@$inclUphills) * 100;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_incline_downhill", "avg", Average(@$inclDownhills) * 100;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_rise_rate_uphill", "avg", Average(@$riseRateUphills);
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_rise_rate_downhill", "avg", Average(@$riseRateDownhills);
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "min_heart_rate", "min", $g_minHr;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "avg_heart_rate", "avg", $avghr;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "max_heart_rate", "max", $maxhr;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "min_percent_hrmax", "min", $g_minHr / $g_hrMax * 100;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_percent_hrmax", "avg", $avghr / $g_hrMax * 100;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "max_percent_hrmax", "max", $maxhr / $g_hrMax * 100;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "time_under_target_zone", "max", $g_timeUnderTargetZone;
+    printf "%s<!-- percent_under_target_zone>%.1f</percent_under_target_zone -->\n",
+      $indent x 3, $g_timeUnderTargetZone / $tot_time * 100;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "time_in_target_zone", "max", $g_timeInTargetZone;
+    printf "%s<!-- percent_in_target_zone>%.1f</percent_in_target_zone -->\n",
+      $indent x 3, $g_timeInTargetZone / $tot_time * 100;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "time_over_target_zone", "max", $g_timeOverTargetZone;
+    printf "%s<!-- percent_over_target_zone>%.1f</percent_over_target_zone -->\n",
+      $indent x 3, $g_timeOverTargetZone / $tot_time * 100;
+
+#   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+#     $indent x 3, "time_under_intensity_zone", "max", $g_timeUnderIntZone;
+#   printf "%s<!-- percent_under_intensity_zone>%.1f</percent_under_intensity_zone -->\n",
+#     $indent x 3, $g_timeUnderIntZone / $tot_time * 100;
+#   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+#     $indent x 3, "time_in_intensity_zone1", "max", $g_timeInIntZone1;
+#   printf "%s<!-- percent_in_intensity_zone1>%.1f</percent_in_intensity_zone1 -->\n",
+#     $indent x 3, $g_timeInIntZone1 / $tot_time * 100;
+#   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+#     $indent x 3, "time_in_intensity_zone2", "max", $g_timeInIntZone2;
+#   printf "%s<!-- percent_in_intensity_zone2>%.1f</percent_in_intensity_zone2 -->\n",
+#     $indent x 3, $g_timeInIntZone2 / $tot_time * 100;
+#   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+#     $indent x 3, "time_in_intensity_zone3", "max", $g_timeInIntZone3;
+#   printf "%s<!-- percent_in_intensity_zone3>%.1f</percent_in_intensity_zone3 -->\n",
+#     $indent x 3, $g_timeInIntZone3 / $tot_time * 100;
+#   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+#     $indent x 3, "time_in_intensity_zone4", "max", $g_timeInIntZone4;
+#   printf "%s<!-- percent_in_intensity_zone4>%.1f</percent_in_intensity_zone4 -->\n",
+#     $indent x 3, $g_timeInIntZone4 / $tot_time * 100;
+#   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+#     $indent x 3, "time_over_intensity_zone", "max", $g_timeOverIntZone;
+#   printf "%s<!-- percent_over_intensity_zone>%.1f</percent_over_intensity_zone -->\n",
+#     $indent x 3, $g_timeOverIntZone / $tot_time * 100;
+
+    $avgpower = Average(@$powers) if !defined $avgpower;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_power", "avg", $avgpower;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_power_KJ", "avg", $avgpower * $tetime / 1000; # E(KJ)= P(W) x t(s) / 1000
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_power_W_per_Kg", "avg", $avgpower / $g_weight;
+    $maxpower = $g_maxPower if !defined $maxpower;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "max_power", "max", $maxpower;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "avg_cadence", "avg", $avgcad;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "max_cadence", "max", $maxcad;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "min_temperature", "min", $g_minTemp;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "avg_temperature", "avg", Median(@{$temps});
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+      $indent x 3, "max_temperature", "max", $g_maxTemp;
+
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "total_cycles", "max", $tcycles;
+    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
+      $indent x 3, "total_records", "max", $tot_records;
+
+    printf "%s<gpxdata:trigger kind=\"%s\"/>\n", $indent x 3, $ltrigger;
+    printf "%s<gpxdata:intensity>%s</gpxdata:intensity>\n", $indent x 3, "active";
+
+    printf "%s</gpxdata:lap>\n", $indent x 2;
+  }
+} # PrintGpxLap
 
 #==============================================================================
-# Print all data from fit file in slf format
-sub PrintSlfData {
+# Convert FIT trigger type to Cluetrust GPX extension trigger type
+sub conv_trigger {
+# manual, time, distance, position_start, position_lap,
+# position_waypoint, position_marked, session_end, fitness_equipment
+# ==> manual, time, distance, location, hr
+  my $v = shift;
+
+  my $rv = "manual";
+  if ($v eq "manual") { $rv = "manual"; }
+  elsif ($v eq "time") { $rv = "time"; }
+  elsif ($v eq "distance") { $rv = "distance"; }
+  elsif ($v eq "position_start") { $rv = "location"; }
+  elsif ($v eq "position_lap") { $rv = "location"; }
+  elsif ($v eq "position_waypoint") { $rv = "location"; }
+  elsif ($v eq "position_marked") { $rv = "location"; }
+  elsif ($v eq "session_end") { $rv = "manual"; }
+  elsif ($v eq "fitness_equipment") { $rv = "manual"; }
+
+  return $rv;
+} # conv_trigger
+
+#==============================================================================
+# Print all data from fit file in gpx format
+sub PrintGpxData {
   my $fname = shift;
 
   # redirect STDOUT to destination file
   open TMP, ">", $fname or die $!."\n";
   select TMP;
 
-  printf "<?xml %s?>\n", 'version="1.0" encoding="utf-8"';
+  printf "<?xml %s?>\n", 'version="1.0" encoding="UTF-8"';
 
-  PrintSlfHeader(); # date, version
+  PrintGpxHeader(); # version, xmlns
 
-  PrintSlfComputer(); # computer info
+  PrintGpxMetadata(); # name, author, ...
 
-  PrintSlfGeneralInfo(); # general info
+  PrintGpxTracks(); # track segments & points, ...
 
-  PrintSlfEntries(); # track points
+  PrintGpxExtensions(); # laps, session, ...
 
-  PrintSlfMarkers(); # laps
-
-  printf "</Activity>\n";
+  printf "</gpx>\n";
 
   select STDOUT;
   close TMP;
-} # PrintSlfData
+} # PrintGpxData
