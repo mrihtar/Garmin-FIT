@@ -43,7 +43,7 @@ require Exporter;
 	     FIT_HEADER_LENGTH
 	     );
 
-$version = 0.21;
+$version = 0.22;
 $version_major_scale = 100;
 
 sub version_major {
@@ -672,7 +672,7 @@ $cthd_mask_local_message_type = (1 << $cthd_length_local_message_type) - 1;
 $cthd_length_time_offset = 5;
 $cthd_mask_time_offset = (1 << $cthd_length_time_offset) - 1;
 
-$defmsg_min_template = 'C C C v C';
+$defmsg_min_template = 'C C C S C';
 $defmsg_min_length = length(pack($defmsg_min_template));
 
 $deffld_template = 'C C C';
@@ -5152,10 +5152,10 @@ sub add_endian_converter {
       ($p, $unp) = (qw(N V));
     }
     else {
-      ($p, $unp, $n) = (qw(N V), 2 * $c);
+      ($p, $unp, $n) = (qw(N V), 2);
     }
 
-    push @$cvt, $p . $n, $unp . $n, $i_string, $size[$type] * $c;
+    push @$cvt, $p . $n, $unp . $n, $i_string, $size[$type], $c;
     1;
   }
   else {
@@ -5172,7 +5172,7 @@ sub fetch_definition_message {
   my $i = $self->offset;
   my ($rechd, $reserved, $endian, $msgnum, $nfields) = unpack($defmsg_min_template, substr($$buffer, $i, $defmsg_min_length));
 
-  $endian = 1 if $endian;
+  $endian = $endian ? 1 : 0;
   $self->offset($i + $defmsg_min_length);
 
   my $len = $nfields * $deffld_length;
@@ -5377,19 +5377,19 @@ sub endian_convert {
   my ($self, $cvt, $buffer, $i) = @_;
   my $j;
 
-  for ($j = 3 ; $j < @$cvt ; $j += 4) {
-    my ($b, $n) = @$cvt[$j - 1, $j];
+  for ($j = 4 ; $j < @$cvt ; $j += 5) {
+    my ($b, $size, $c) = @$cvt[$j - 2, $j - 1, $j];
 
-    $b += $i;
+    for ($b += $i ; $c > 0 ; $b += $size, --$c) {
+      my @v = unpack($cvt->[$j - 3], substr($$buffer, $b, $size));
+      my ($k, $l);
 
-    my @v = unpack($cvt->[$j - 2], substr($$buffer, $b, $n));
-    my ($k, $l);
+      for ($k = 0, $l = $#v ; $k < $l ; ++$k, --$l) {
+	@v[$k, $l] = @v[$l, $k];
+      }
 
-    for ($k = 0, $l = $#v ; $k < $l ; ++$k, --$l) {
-      @v[$k, $l] = @v[$l, $k];
+      substr($$buffer, $b, $size) = pack($cvt->[$j - 4], @v);
     }
-
-    substr($$buffer, $b, $n) = pack($cvt->[$j - 3], @v);
   }
 }
 
@@ -6349,6 +6349,20 @@ The author is very grateful to Garmin for supplying us free software programers 
 which includes detailed documetation about its proprietary file format.
 
 =head1 CHANGES
+
+=head2 0.21 --E<gt> 0.22
+
+=over 4
+
+=item C<$defmsg_min_template>
+
+the conversion specifier for I<<message number>> must be 'S', not 'v'.
+
+=item C<endian_converter>
+
+=item C<endian_convert()>
+
+broken for arrays of multi-octets data.
 
 =head2 0.20 --E<gt> 0.21
 
