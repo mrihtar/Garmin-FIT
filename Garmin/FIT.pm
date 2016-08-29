@@ -5,6 +5,19 @@ use POSIX qw(BUFSIZ);
 use Time::Local;
 #use Math::BigFloat;
 
+BEGIN {
+  $uint64_invalid = undef;
+
+  eval {
+    $uint64_invalid = unpack('Q', pack('a', -1));
+  };
+
+  unless (defined $uint64_invalid) {
+    require Math::BigInt;
+    import Math::BigInt;
+  }
+}
+
 require Exporter;
 @ISA = qw(Exporter);
 
@@ -16,17 +29,21 @@ require Exporter;
 	     FIT_UINT16
 	     FIT_SINT32
 	     FIT_UINT32
+	     FIT_SINT64
+	     FIT_UINT64
 	     FIT_STRING
 	     FIT_FLOAT32
 	     FIT_FLOAT64
 	     FIT_UINT8Z
 	     FIT_UINT16Z
 	     FIT_UINT32Z
+	     FIT_UINT64Z
 	     FIT_BYTE
+	     FIT_BASE_TYPE_MAX
 	     FIT_HEADER_LENGTH
 	     );
 
-$version = 0.20; # 20.00 Release
+$version = 0.21;
 $version_major_scale = 100;
 
 sub version_major {
@@ -123,7 +140,7 @@ sub protocol_version_from_string {
   }
 }
 
-$protocol_version = &protocol_version_from_string(undef, "1.8");
+$protocol_version = &protocol_version_from_string(undef, "2.2");
 @protocol_version = &protocol_version_major(undef, $protocol_version);
 $protocol_version_header_crc_started = &protocol_version_from_string(undef, "1.0");
 
@@ -178,7 +195,7 @@ sub profile_version_from_string {
   }
 }
 
-$profile_version = &profile_version_from_string(undef, "20.00");
+$profile_version = &profile_version_from_string(undef, "20.08");
 @profile_version = &profile_version_major(undef, $profile_version);
 
 sub profile_version_string {
@@ -631,6 +648,10 @@ sub FIT_UINT8Z() {10;}
 sub FIT_UINT16Z() {11;}
 sub FIT_UINT32Z() {12;}
 sub FIT_BYTE() {13;}
+sub FIT_SINT64() {14;}
+sub FIT_UINT64() {15;}
+sub FIT_UINT64Z() {16;}
+sub FIT_BASE_TYPE_MAX() {FIT_UINT64Z;}
 
 $rechd_offset_compressed_timestamp_header = 7;
 $rechd_mask_compressed_timestamp_header = 1 << $rechd_offset_compressed_timestamp_header;
@@ -641,6 +662,8 @@ $rechd_length_cth_timestamp = $rechd_offset_cth_local_message_type;
 $rechd_mask_cth_timestamp = (1 << $rechd_length_cth_timestamp) - 1;
 $rechd_offset_definition_message = 6;
 $rechd_mask_definition_message = 1 << $rechd_offset_definition_message;
+$rechd_offset_devdata_message = 5;
+$rechd_mask_devdata_message = 1 << $rechd_offset_devdata_message;
 $rechd_length_local_message_type = 4;
 $rechd_mask_local_message_type = (1 << $rechd_length_local_message_type) - 1;
 $cthd_offset_local_message_type = 5;
@@ -657,6 +680,11 @@ $deffld_length = length(pack($deffld_template));
 $deffld_mask_endian_p = 1 << 7;
 $deffld_mask_type = (1 << 5) - 1;
 
+$devdata_min_template = 'C';
+$devdata_min_length = length(pack($devdata_min_template));
+$devdata_deffld_template = 'C C C';
+$devdata_deffld_length = length(pack($deffld_template));
+
 @invalid = (0xFF) x ($deffld_mask_type + 1);
 
 $invalid[FIT_SINT8] = 0x7F;
@@ -664,13 +692,90 @@ $invalid[FIT_SINT16] = 0x7FFF;
 $invalid[FIT_UINT16] = 0xFFFF;
 $invalid[FIT_SINT32] = 0x7FFFFFFF;
 $invalid[FIT_UINT32] = 0xFFFFFFFF;
-$invalid[FIT_STRING] = $invalid[FIT_UINT8Z] = $invalid[FIT_UINT16Z] = $invalid[FIT_UINT32Z] = 0;
-#$invalid[FIT_FLOAT32] = unpack('f', pack('V', 0xFFFFFFFF));
-#$invalid[FIT_FLOAT32] = Math::BigFloat->from_hex('0xFFFFFFFF');
-$invalid[FIT_FLOAT32] = NaN;
-#$invalid[FIT_FLOAT64] = unpack('d', pack('V V', 0xFFFFFFFF, 0xFFFFFFFF));
-#$invalid[FIT_FLOAT64] = Math::BigFloat->from_hex('0xFFFFFFFFFFFFFFFF');
-$invalid[FIT_FLOAT64] = NaN;
+$invalid[FIT_STRING] = $invalid[FIT_UINT8Z] = $invalid[FIT_UINT16Z] = $invalid[FIT_UINT32Z] = $invalid[FIT_UINT64Z] = 0;
+#$invalid[FIT_FLOAT32] = NaN;
+#$invalid[FIT_FLOAT64] = NaN;
+$invalid[FIT_FLOAT32] = unpack('f', pack('V', 0xFFFFFFFF));
+$invalid[FIT_FLOAT64] = unpack('d', pack('V V', 0xFFFFFFFF, 0xFFFFFFFF));
+
+my ($big_int_base32, $sint64_2c_mask, $sint64_2c_base, $sint64_2c_sign);
+
+if (defined $uint64_invalid) {
+  $invalid[FIT_UINT64] = $uint64_invalid;
+  $invalid[FIT_SINT64] = eval '0x7FFFFFFFFFFFFFFF';
+}
+else {
+  $invalid[FIT_UINT64] = Math::BigInt->new('0xFFFFFFFFFFFFFFFF');
+  $invalid[FIT_SINT64] = Math::BigInt->new('0x7FFFFFFFFFFFFFFF');
+  $big_int_base32 = Math::BigInt->new('0x100000000');
+  $sint64_2c_mask = Math::BigInt->new('0xFFFFFFFFFFFFFFFF');
+  $sint64_2c_base = Math::BigInt->new('0x10000000000000000');
+  $sint64_2c_sign = Math::BigInt->new('0x1000000000000000');
+}
+
+sub packfilter_uint64_big_endian {
+  my @res = $_[0]->bdiv($big_int_base32);
+
+  @res;
+}
+
+sub packfilter_uint64_little_endian {
+  my @res = $_[0]->bdiv($big_int_base32);
+
+  @res[1, 0];
+}
+
+*packfilter_uint64 = $my_endian ? \&packfilter_uint64_big_endian : \&packfilter_uint64_little_endian;
+
+sub unpackfilter_uint64_big_endian {
+  my ($hi, $lo) = @_;
+
+  Math::BigInt->new($hi)->blsft(32)->badd($lo);
+}
+
+sub unpackfilter_uint64_little_endian {
+  &unpackfilter_uint64_big_endian(@_[1, 0]);
+}
+
+*unpackfilter_uint64 = $my_endian ? \&unpackfilter_uint64_big_endian : \&unpackfilter_uint64_little_endian;
+
+sub packfilter_sint64_big_endian {
+  if ($_[0]->bcmp(0) < 0) {
+    &packfilter_uint64_big_endian($sint64_2c_mask->band($sint64_2c_base->badd($_[0])));
+  }
+  else {
+    &packfilter_uint64_big_endian($_[0]);
+  }
+}
+
+sub packfilter_sint64_little_endian {
+  if ($_[0]->bcmp(0) < 0) {
+    &packfilter_uint64_little_endian($sint64_2c_mask->band($sint64_2c_base->badd($_[0])));
+  }
+  else {
+    &packfilter_uint64_little_endian($_[0]);
+  }
+}
+
+*packfilter_sint64 = $my_endian ? \&packfilter_sint64_big_endian : \&packfilter_sint64_little_endian;
+
+sub unpackfilter_sint64_big_endian {
+  my ($hi, $lo) = @_;
+  my $n = Math::BigInt->new($hi)->blsft(32)->badd($lo)->band($sint64_2c_mask);
+
+  if ($n->band($sint64_2c_sign)->bcmp(0) == 0) {
+    $n;
+  }
+  else {
+    $n->bsub($sint64_2c_base);
+  }
+}
+
+sub unpackfilter_sint64_little_endian {
+  &unpackfilter_sint64_big_endian(@_[1, 0]);
+}
+
+*unpackfilter_sint64 = $my_endian ? \&unpackfilter_sint64_big_endian : \&unpackfilter_sint64_little_endian;
 
 sub invalid {
   my ($self, $type) = @_;
@@ -682,9 +787,12 @@ sub invalid {
 
 $size[FIT_SINT16] = $size[FIT_UINT16] = $size[FIT_UINT16Z] = 2;
 $size[FIT_SINT32] = $size[FIT_UINT32] = $size[FIT_UINT32Z] = $size[FIT_FLOAT32] = 4;
-$size[FIT_FLOAT64] = 8;
+$size[FIT_FLOAT64] = $size[FIT_SINT64] = $size[FIT_UINT64] = $size[FIT_UINT64Z] = 8;
 
 @template = ('C') x ($deffld_mask_type + 1);
+@packfactor = (1) x ($deffld_mask_type + 1);
+@packfilter = (undef) x ($deffld_mask_type + 1);
+@unpackfilter = (undef) x ($deffld_mask_type + 1);
 
 $template[FIT_SINT8] = 'c';
 $template[FIT_SINT16] = 's';
@@ -693,6 +801,19 @@ $template[FIT_SINT32] = 'l';
 $template[FIT_UINT32] = $template[FIT_UINT32Z] = 'L';
 $template[FIT_FLOAT32] = 'f';
 $template[FIT_FLOAT64] = 'd';
+
+if (defined $uint64_invalid) {
+  $template[FIT_SINT64] = 'q';
+  $template[FIT_UINT64] = $template[FIT_UINT64Z] = 'Q';
+}
+else {
+  $template[FIT_SINT64] = $template[FIT_UINT64] = $template[FIT_UINT64Z] = 'L';
+  $packfactor[FIT_SINT64] = $packfactor[FIT_UINT64] = $packfactor[FIT_UINT64Z] = 2;
+  $packfilter[FIT_SINT64] = \&packfiltr_sint64;
+  $unpackfilter[FIT_SINT64] = \&unpackfiltr_sint64;
+  $packfilter[FIT_UINT64] = $packfilter[FIT_UINT64Z] = \&packfiltr_uint64;
+  $unpackfilter[FIT_UINT64] = $unpackfilter[FIT_UINT64Z] = \&unpackfiltr_uint64;
+}
 
 %named_type =
   (
@@ -804,6 +925,7 @@ $template[FIT_FLOAT64] = 'd';
      'exd_data_concept_configuration' => 202,
      'field_description' => 206,
      'developer_data_id' => 207,
+     'magnetometer_data' => 208,
      'mfg_range_min' => 0xFF00,
      'mfg_range_max' => 0xFFFE,
    },
@@ -1184,6 +1306,7 @@ $template[FIT_FLOAT64] = 'd';
      'kitesurfing' => 44,
      'tactical' => 45,
      'jumpmaster' => 46,
+     'boxing' => 47,
      'all' => 254,
    },
 
@@ -1256,6 +1379,7 @@ $template[FIT_FLOAT64] = 'd';
      'kitesurfing' => 0x10,
      'tactical' => 0x20,
      'jumpmaster' => 0x40,
+     'boxing' => 0x80,
    },
 
    'sub_sport' => +{
@@ -1309,6 +1433,7 @@ $template[FIT_FLOAT64] = 'd';
      'gravel_cycling' => 46,
      'e_bike_mountain' => 47,
      'commuting' => 48,
+     'mixed_surface' => 49,
      'all' => 254,
    },
 
@@ -1378,6 +1503,12 @@ $template[FIT_FLOAT64] = 'd';
      'military' => 2,
      'hour_12_with_seconds' => 3,
      'hour_24_with_seconds' => 4,
+   },
+
+   'date_mode' => +{
+     '_base_type' => FIT_ENUM,
+     'day_month' => 0,
+     'month_day' => 1,
    },
 
    'event' => +{
@@ -1828,6 +1959,8 @@ $template[FIT_FLOAT64] = 'd';
      'index_smart_scale' => 2429,
      'fr235' => 2431,
      'nautix' => 2496,
+     'edge_820' => 2530,
+     'edge_explore_820' => 2531,
      'sdm4' => 10007,
      'edge_remote' => 10014,
      'training_center' => 20119,
@@ -2081,6 +2214,7 @@ $template[FIT_FLOAT64] = 'd';
      'true_up' => 0x04000000,
      'find_my_watch' => 0x08000000,
      'remote_manual_sync' => 0x10000000,
+     'live_track_auto_start' => 0x20000000,
    },
 
    'weather_report' => +{
@@ -2262,6 +2396,10 @@ $template[FIT_FLOAT64] = 'd';
      'right_forearm_extensors' => 33,
      'neck' => 34,
      'throat' => 35,
+     'waist_mid_back' => 36,
+     'waist_front' => 37,
+     'waist_left' => 38,
+     'waist_right' => 39,
    },
 
    'segment_lap_status' => +{
@@ -2342,6 +2480,10 @@ $template[FIT_FLOAT64] = 'd';
      'video_second_stream_end' => 6,
      'video_split_start' => 7,
      'video_second_stream_split_start' => 8,
+     'video_pause' => 11,
+     'video_second_stream_pause' => 12,
+     'video_resume' => 13,
+     'video_second_stream_resume' => 14,
    },
 
    'sensor_type' => +{
@@ -2356,6 +2498,7 @@ $template[FIT_FLOAT64] = 'd';
      'auto' => 0,
      'individual' => 4,
      'high_visibility' => 5,
+     'trail' => 6,
    },
 
    'comm_timeout_type' => +{
@@ -2397,6 +2540,14 @@ $template[FIT_FLOAT64] = 'd';
      'solution_coasting' => 0x0400,
      'true_track_angle' => 0x0800,
      'magnetic_heading' => 0x1000,
+   },
+
+   'auto_sync_frequency' => +{
+     '_base_type' => FIT_ENUM,
+     'never' => 0,
+     'occasionally' => 1,
+     'frequent' => 2,
+     'once_a_day' => 3,
    },
 
    'exd_layout' => +{
@@ -2505,6 +2656,7 @@ $template[FIT_FLOAT64] = 'd';
      'second' => 28,
      'third' => 29,
      'shifter' => 30,
+     'last_sport' => 31,
      'zone_9' => 242,
      'zone_8' => 243,
      'zone_7' => 244,
@@ -2601,6 +2753,19 @@ $template[FIT_FLOAT64] = 'd';
      'navigation_location' => 80,
      'compass' => 81,
      'gear_combo' => 82,
+     'muscle_oxygen' => 83,
+     'icon' => 84,
+   },
+
+   'auto_activity_detect' => +{
+     '_base_type' => FIT_UINT32,
+     'none' => 0x00000000,
+     'running' => 0x00000001,
+     'cycling' => 0x00000002,
+     'swimming' => 0x00000004,
+     'walking' => 0x00000008,
+     'elliptical' => 0x00000020,
+     'sedentary' => 0x00000400,
    },
 
    'supported_exd_screen_layouts' => +{
@@ -2631,6 +2796,9 @@ $template[FIT_FLOAT64] = 'd';
      'uint16z' => 139,
      'uint32z' => 140,
      'byte' => 13,
+     'sint64' => 142,
+     'uint64' => 143,
+     'uint64z' => 144,
    },
 
    'turn_type' => +{
@@ -2962,8 +3130,12 @@ sub named_type_value {
      26 => +{'name' => 'unknown26'}, # unknown ENUM
      27 => +{'name' => 'unknown27'}, # unknown ENUM
      29 => +{'name' => 'unknown29'}, # unknown ENUM
+     36 => +{'name' => 'activity_tracker_enabled', 'type_name' => 'bool'},
      38 => +{'name' => 'unknown38'}, # unknown ENUM
+     40 => +{'name' => 'pages_enabled'},
      41 => +{'name' => 'unknown41'}, # unknown ENUM
+     46 => +{'name' => 'move_alert_enabled', 'type_name' => 'bool'},
+     47 => +{'name' => 'date_mode', 'type_name' => 'date_mode'},
      48 => +{'name' => 'unknown48'}, # unknown ENUM
      49 => +{'name' => 'unknown49'}, # unknown UINT16
      52 => +{'name' => 'unknown52'}, # unknown ENUM
@@ -2971,7 +3143,11 @@ sub named_type_value {
      54 => +{'name' => 'unknown54'}, # unknown ENUM
      55 => +{'name' => 'display_orientation', 'type_name' => 'display_orientation'},
      56 => +{'name' => 'mounting_side', 'type_name' => 'side'},
+     57 => +{'name' => 'default_page'},
+     58 => +{'name' => 'autosync_min_steps', 'unit' => 'steps'},
+     59 => +{'name' => 'autosync_min_time', 'unit' => 'minutes'},
      85 => +{'name' => 'unknown85'}, # unknown ENUM
+     89 => +{'name' => 'auto_sync_frequency', 'type_name' => 'auto_sync_frequency'},
      94 => +{'name' => 'number_of_screens'},
      95 => +{'name' => 'smart_notification_display_orientation', 'type_name' => 'display_orientation'},
    },
@@ -3071,19 +3247,19 @@ sub named_type_value {
    },
 
    'connectivity' => +{
-     0 => +{'name' => 'bluetooth_enabled'},
-     1 => +{'name' => 'bluetooth_le_enabled'},
-     2 => +{'name' => 'ant_enabled'},
+     0 => +{'name' => 'bluetooth_enabled', 'type_name' => 'bool'},
+     1 => +{'name' => 'bluetooth_le_enabled', 'type_name' => 'bool'},
+     2 => +{'name' => 'ant_enabled', 'type_name' => 'bool'},
      3 => +{'name' => 'name'},
-     4 => +{'name' => 'live_tracking_enabled'},
-     5 => +{'name' => 'weather_conditions_enabled'},
-     6 => +{'name' => 'weather_alerts_enabled'},
-     7 => +{'name' => 'auto_activity_upload_enabled'},
-     8 => +{'name' => 'course_download_enabled'},
-     9 => +{'name' => 'workout_download_enabled'},
-     10 => +{'name' => 'gps_ephemeris_download_enabled'},
-     11 => +{'name' => 'incident_detection_enabled'},
-     12 => +{'name' => 'grouptrack_enabled'},
+     4 => +{'name' => 'live_tracking_enabled', 'type_name' => 'bool'},
+     5 => +{'name' => 'weather_conditions_enabled', 'type_name' => 'bool'},
+     6 => +{'name' => 'weather_alerts_enabled', 'type_name' => 'bool'},
+     7 => +{'name' => 'auto_activity_upload_enabled', 'type_name' => 'bool'},
+     8 => +{'name' => 'course_download_enabled', 'type_name' => 'bool'},
+     9 => +{'name' => 'workout_download_enabled', 'type_name' => 'bool'},
+     10 => +{'name' => 'gps_ephemeris_download_enabled', 'type_name' => 'bool'},
+     11 => +{'name' => 'incident_detection_enabled', 'type_name' => 'bool'},
+     12 => +{'name' => 'grouptrack_enabled', 'type_name' => 'bool'},
    },
 
    # =================== Sport settings file messages ===================
@@ -3153,11 +3329,11 @@ sub named_type_value {
      3 => +{'name' => 'end_date', 'type_name' => 'date_time'},
      4 => +{'name' => 'type', 'type_name' => 'goal'},
      5 => +{'name' => 'value'},
-     6 => +{'name' => 'repeat'},
+     6 => +{'name' => 'repeat', 'type_name' => 'bool'},
      7 => +{'name' => 'target_value'},
      8 => +{'name' => 'recurrence', 'type_name' => 'goal_recurrence'},
      9 => +{'name' => 'recurrence_value'},
-     10 => +{'name' => 'enabled'},
+     10 => +{'name' => 'enabled', 'type_name' => 'bool'},
    },
 
    # =================== Activity file messages ===================
@@ -3326,9 +3502,9 @@ sub named_type_value {
      129 => +{'name' => 'avg_lev_motor_power', 'unit' => 'watts'},
      130 => +{'name' => 'max_lev_motor_power', 'unit' => 'watts'},
      131 => +{'name' => 'lev_battery_consumption', 'scale' => 2, 'unit' => '%'},
-     132 => +{'name' => 'unknown132'}, # unknown UINT16
-     133 => +{'name' => 'unknown133'}, # unknown UINT16
-     134 => +{'name' => 'unknown134'}, # unknown UINT16
+     132 => +{'name' => 'avg_vertical_ratio', 'scale' => 100, 'unit' => '%'},
+     133 => +{'name' => 'avg_stance_time_balance', 'scale' => 100, 'unit' => '%'},
+     134 => +{'name' => 'avg_step_length', 'scale' => 10, 'unit' => 'mm'},
    },
 
    'lap' => +{
@@ -3474,9 +3650,9 @@ sub named_type_value {
      115 => +{'name' => 'avg_lev_motor_power', 'unit' => 'watts'},
      116 => +{'name' => 'max_lev_motor_power', 'unit' => 'watts'},
      117 => +{'name' => 'lev_battery_consumption', 'scale' => 2, 'unit' => '%'},
-     118 => +{'name' => 'unknown118'}, # unknown UINT16
-     119 => +{'name' => 'unknown119'}, # unknown UINT16
-     120 => +{'name' => 'unknown120'}, # unknown UINT16
+     118 => +{'name' => 'avg_vertical_ratio', 'scale' => 100, 'unit' => '%'},
+     119 => +{'name' => 'avg_stance_time_balance', 'scale' => 100, 'unit' => '%'},
+     120 => +{'name' => 'avg_step_length', 'scale' => 10, 'unit' => 'mm'},
    },
 
    'length' => +{
@@ -3512,7 +3688,7 @@ sub named_type_value {
      7 => +{'name' => 'power', 'unit' => 'watts'},
      8 => +{'name' => 'compressed_speed_distance'}, # complex decoding!
      9 => +{'name' => 'grade', 'scale' => 100, 'unit' => '%'},
-     10 => +{'name' => 'registance'},
+     10 => +{'name' => 'resistance'},
      11 => +{'name' => 'time_from_course', 'scale' => 1000, 'unit' => 's'},
      12 => +{'name' => 'cycle_length', 'scale' => 100, 'unit' => 'm'},
      13 => +{'name' => 'temperature', 'unit' => 'deg.C'},
@@ -3559,6 +3735,9 @@ sub named_type_value {
      78 => +{'name' => 'enhanced_altitude', 'scale' => 5, 'offset' => 500, 'unit' => 'm'},
      81 => +{'name' => 'battery_soc', 'scale' => 2, 'unit' => '%'},
      82 => +{'name' => 'motor_power', 'unit' => 'watts'},
+     83 => +{'name' => 'vertical_ratio', 'scale' => 100, 'unit' => '%'},
+     84 => +{'name' => 'stance_time_balance', 'scale' => 100, 'unit' => '%'},
+     85 => +{'name' => 'step_length', 'scale' => 10, 'unit' => 'mm'},
    },
 
    'event' => +{
@@ -3705,6 +3884,18 @@ sub named_type_value {
      4 => +{'name' => 'type', 'type_name' => 'weather_severe_type'},
    },
 
+   'gps_metadata' => +{
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
+     1 => +{'name' => 'position_lat', 'unit' => 'semicircles'},
+     2 => +{'name' => 'position_long', 'unit' => 'semicircles'},
+     3 => +{'name' => 'enhanced_altitude', 'scale' => 5, 'offset' => 500, 'unit' => 'm'},
+     4 => +{'name' => 'enhanced_speed', 'scale' => 1000, 'unit' => 'm/s'},
+     5 => +{'name' => 'heading', 'scale' => 100, 'unit' => 'degrees'},
+     6 => +{'name' => 'utc_timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     7 => +{'name' => 'velocity', 'scale' => 100, 'unit' => 'm/s'},
+   },
+
    'camera_event' => +{
      253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
@@ -3735,6 +3926,18 @@ sub named_type_value {
      5 => +{'name' => 'calibrated_accel_x', 'unit' => 'g'},
      6 => +{'name' => 'calibrated_accel_y', 'unit' => 'g'},
      7 => +{'name' => 'calibrated_accel_z', 'unit' => 'g'},
+   },
+
+   'magnetometer_data' => +{
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
+     1 => +{'name' => 'sample_time_offset', 'unit' => 'ms'},
+     2 => +{'name' => 'mag_x', 'unit' => 'counts'},
+     3 => +{'name' => 'mag_y', 'unit' => 'counts'},
+     4 => +{'name' => 'mag_z', 'unit' => 'counts'},
+     5 => +{'name' => 'calibrated_mag_x', 'unit' => 'G'},
+     6 => +{'name' => 'calibrated_mag_y', 'unit' => 'G'},
+     7 => +{'name' => 'calibrated_mag_z', 'unit' => 'G'},
    },
 
    'three_d_sensor_calibration' => +{
@@ -3983,6 +4186,7 @@ sub named_type_value {
      8 => +{'name' => 'leader_group_primary_key'},
      9 => +{'name' => 'leader_activity_id'},
      10 => +{'name' => 'leader_activity_id_string'},
+     11 => +{'name' => 'default_race_leader'},
    },
 
    # =================== Workout file messages ===================
@@ -4282,6 +4486,8 @@ sub named_type_value {
      9 => +{'name' => 'bits'},
      10 => +{'name' => 'accumulate'},
      13 => +{'name' => 'fit_base_unit_id', 'type_name' => 'fit_base_unit'},
+     14 => +{'name' => 'native_mesg_num', 'type_name' => 'mesg_num'},
+     15 => +{'name' => 'native_field_num'},
    },
 
    'developer_data_id' => +{
@@ -4675,7 +4881,7 @@ sub data_message_callback_by_num {
       foreach $num (keys %msgtype_by_num) {
 	my $cb = $cbmap->{$num};
 
-	$res{$num} = ref $cb eq 'ARRAY' ? [@$cb] : [];
+	ref $cb eq 'ARRAY' and $res{$num} = [@$cb];
       }
 
       \%res;
@@ -4686,7 +4892,9 @@ sub data_message_callback_by_num {
   }
   elsif (@_) {
     if (ref $_[0] eq 'CODE') {
-      $cbmap->{$msgtype->{_name}} = $cbmap->{$num} = [@_];
+      $cbmap->{$num} = [@_];
+      $msgtype->{_name} ne '' and $cbmap->{$msgtype->{_name}} = $cbmap->{$num};
+      $cbmap->{$num};
     }
     else {
       $self->error('not a CODE');
@@ -4695,12 +4903,7 @@ sub data_message_callback_by_num {
   else {
     my $cb = $cbmap->{$num};
 
-    if (ref $cb eq 'ARRAY') {
-      [@$cb];
-    }
-    else {
-      [];
-    }
+    ref $cb eq 'ARRAY' ? [@$cb] : [];
   }
 }
 
@@ -4725,7 +4928,7 @@ sub data_message_callback_by_name {
       foreach $name (keys %msgtype_by_name) {
 	my $cb = $cbmap->{$name};
 
-	$res{$name} = ref $cb eq 'ARRAY' ? [@$cb] : [];
+	ref $cb eq 'ARRAY' and $res{$name} = [@$cb];
       }
 
       \%res;
@@ -4745,12 +4948,7 @@ sub data_message_callback_by_name {
   else {
     my $cb = $cbmap->{$name};
 
-    if (ref $cb eq 'ARRAY') {
-      [@$cb];
-    }
-    else {
-      [];
-    }
+    ref $cb eq 'ARRAY' ? [@$cb] : [];
   }
 }
 
@@ -4759,6 +4957,210 @@ sub undocumented_field_name {
 
 # 'xxx' . $i_string . '_' . $index . '_' . $size . '_' . $type;
   'xxx' . $index;
+}
+
+sub syscallback_devdata_id {
+  my ($self, $desc, $v) = @_;
+  my ($i_id, $T_id, $c_id, $i_index) = @$desc{qw(i_application_id T_application_id c_application_id i_developer_data_index)};
+  my $emsg;
+
+  if (!defined $i_id) {
+    $emsg = "no application_id";
+  }
+  elsif ($T_id != FIT_UINT8 && $T_id != FIT_BYTE) {
+    $emsg = "base type of application_id is $type_name[$T_id] ($T_id)";
+  }
+  elsif (!defined $i_index) {
+    $emsg = "no developer_data_index";
+  }
+
+  if ($emsg ne '') {
+    $self->error("Broken developer data id message ($emsg)");
+    return undef;
+  }
+
+  my $devdata_by_index = $self->{devdata_by_index};
+
+  ref $devdata_by_index eq 'HASH' or $devdata_by_index = $self->{devdata_by_index} = +{};
+
+  my $devdata_by_id = $self->{devdata_by_id};
+
+  ref $devdata_by_id eq 'HASH' or $devdata_by_id = $self->{devdata_by_id} = +{};
+
+  my $id;
+
+  if ($T_id == FIT_UINT8) {
+    $id = pack('C*', @$v[$i_id .. ($i_id + $c_id - 1)]);
+  }
+  else {
+    $id = $v->[$i_id];
+  }
+
+  my %devdata = (id => $id, index => $v->[$i_index]);
+
+  $devdata_by_id->{$devdata{id}} = $devdata_by_index->{$devdata{index}} = \%devdata;
+}
+
+sub syscallback_devdata_field_desc {
+  my ($self, $desc, $v) = @_;
+
+  my ($i_index, $I_index, $i_field_num, $I_field_num,
+      $i_base_type_id, $T_base_type_id, $I_base_type_id,
+      $i_field_name, $T_field_name, $c_field_name)
+    = @$desc{qw(i_developer_data_index I_developer_data_index i_field_definition_number I_field_definition_number
+		i_fit_base_type_id T_fit_base_type_id I_fit_base_type_id
+		i_field_name T_field_name c_field_name)};
+
+  my $emsg;
+
+  if (!defined $i_index) {
+    $emsg = 'no developer_data_index';
+  }
+  elsif (!defined $i_field_num) {
+    $emsg = 'no field_num';
+  }
+  elsif (!defined $i_base_type_id) {
+    $emsg = 'no base_type_id';
+  }
+  elsif ($T_base_type_id != FIT_UINT8) {
+    $emsg = "base type of base_type_id is $type_name[$T_base_type_id] ($T_base_type_id)";
+  }
+  elsif (!defined $i_field_name) {
+    $emsg = 'no field_name';
+  }
+  elsif ($T_field_name != FIT_STRING || $c_field_name <= 0) {
+    $emsg = "field_name is not a non-empty string";
+  }
+
+  if ($emsg ne '') {
+    $self->error("broken field description message ($emsg)");
+    return undef;
+  }
+
+  my $base_type = $v->[$i_base_type_id];
+
+  if ($base_type == $I_base_type) {
+    $self->error("invalid base type ($base_type)");
+    return undef;
+  }
+
+  if ($base_type < 0) {
+    $self->error("unknown base type ($base_type)");
+    return undef;
+  }
+
+  $base_type &= $deffld_mask_type;
+
+  unless ($base_type <= FIT_BASE_TYPE_MAX) {
+    $self->error("unknown base type ($base_type)");
+    return undef;
+  }
+
+  my $devdata_by_index = $self->{devdata_by_index};
+
+  unless (ref $devdata_by_index eq 'HASH') {
+    $self->error('no developer data id message before a field description message');
+    return undef;
+  }
+
+  my $index = $v->[$i_index];
+
+  if ($index == $I_index) {
+    $self->error("invalid developer data index ($index)");
+    return undef;
+  }
+
+  my $num = $v->[$i_field_num];
+
+  if ($num == $I_field_num) {
+    $self->error("invalid field definition number ($num)");
+    return undef;
+  }
+
+  my $devdata = $devdata_by_index->{$index};
+
+  unless (ref $devdata eq 'HASH') {
+    $self->error("No developer data id message with the index $index before a field description message");
+    return undef;
+  }
+
+  my $field_desc_by_num = $devdata->{field_desc_by_num};
+
+  ref $field_desc_by_num eq 'HASH' or $field_desc_by_num = $devdata->{field_desc_by_num} = +{};
+
+  my $field_desc_by_name = $devdata->{field_desc_by_name};
+
+  ref $field_desc_by_name eq 'HASH' or $field_desc_by_name = $devdata->{field_desc_by_name} = +{};
+
+  my $o_name = $self->string_value($v, $i_field_name, $c_field_name);
+
+  if ($o_name eq '') {
+    $self->error("name of field $index/$num is null");
+    return undef;
+  }
+
+  my $name = $o_name;
+
+  $name =~ s/\s+/_/g;
+  $name =~ s/\W/sprintf('_%02x_', ord($&))/ge;
+
+  my %fdesc =
+    (
+     '_index' => $index,
+     '_num' => $num,
+     '_name' => $name,
+     'field_name' => $o_name,
+     '_type' => $base_type,
+     );
+
+  my $i_aname;
+
+  foreach $i_aname (grep {/^i_/} keys %$desc) {
+    if ($i_aname !~ /^i_(developer_data_index|field_definition_number|fit_base_type_id|field_name)$/) {
+      my $i = $desc->{$i_aname};
+      my $aname = $i_aname;
+
+      $aname =~ s/^i_//;
+
+      my $I_aname = 'I_' . $aname;
+      my $T_aname = 'T_' . $aname;
+      my $c_aname = 'c_' . $aname;
+
+      if ($desc->{$T_aname} == FIT_STRING) {
+	$fdesc{$aname} = $self->string_value($v, $i, $desc->{$c_aname});
+      }
+      elsif ($v->[$i] != $desc->{$I_aname}) {
+	$fdesc{$aname} = $v->[$i];
+      }
+    }
+  }
+
+  $field_desc_by_num->{$num} = \%fdesc;
+  $field_desc_by_name->{$name} = \%fdesc;
+}
+
+sub add_endian_converter {
+  my ($self, $endian, $type, $c, $i_string, $cvt) = @_;
+
+  if ($endian != $my_endian && $size[$type] > 1) {
+    my ($p, $unp, $n);
+
+    if ($size[$type] == 2) {
+      ($p, $unp) = (qw(n v));
+    }
+    elsif ($size[$type] == 4) {
+      ($p, $unp) = (qw(N V));
+    }
+    else {
+      ($p, $unp, $n) = (qw(N V), 2 * $c);
+    }
+
+    push @$cvt, $p . $n, $unp . $n, $i_string, $size[$type] * $c;
+    1;
+  }
+  else {
+    0;
+  }
 }
 
 sub fetch_definition_message {
@@ -4782,7 +5184,7 @@ sub fetch_definition_message {
   my $msgtype = $msgtype_by_num{$msgnum};
   my $cbmap = $self->data_message_callback;
   my $e = $i + $len;
-  my ($cb, %desc, $i_array, $i_string, @cvt);
+  my ($cb, %desc, $i_array, $i_array_t, $i_string, @cvt, @pi);
 
   $desc{local_message_type} = $rechd & $rechd_mask_local_message_type;
   $desc{message_number} = $msgnum;
@@ -4794,9 +5196,9 @@ sub fetch_definition_message {
   $desc{template} = 'C';
   $self->data_message_descriptor->[$desc{local_message_type}] = \%desc;
 
-  for ($i_array = $i_string = 1 ; $i + $deffld_length <= $e ; $i += $deffld_length) {
+  for ($i_array = $i_array_t = $i_string = 1 ; $i + $deffld_length <= $e ; $i += $deffld_length) {
     my ($index, $size, $type) = unpack($deffld_template, substr($$buffer, $i, $deffld_length));
-    my ($name, $tname, %attr);
+    my ($name, $tname, %attr, );
 
     if (ref $msgtype eq 'HASH') {
       my $fldtype = $msgtype->{$index};
@@ -4825,29 +5227,103 @@ sub fetch_definition_message {
     $desc{'N_' . $name} = $index;
     $desc{'I_' . $name} = $invalid[$type];
 
-    if ($endian != $my_endian && $size[$type] > 1) {
-      my ($p, $unp, $n);
-
-      if ($size[$type] == 2) {
-	($p, $unp) = (qw(n v));
-      }
-      elsif ($size[$type] == 4) {
-	($p, $unp) = (qw(N V));
-      }
-      else {
-	($p, $unp, $n) = (qw(N V), 2 * $c);
-      }
-
-      push @cvt, $p . $n, $unp . $n, $i_string, $size[$type] * $c;
-    }
+    $self->add_endian_converter($endian, $type, $c, $i_string, \@cvt);
 
     $i_array += $c;
     $i_string += $size;
     $desc{template} .= ' ' . $template[$type];
+
+    if ($packfactor[$type] > 1) {
+      push @pi, $i_array_t, $c, $i_array;
+      $c *= $packfactor[$type];
+    }
+
     $desc{template} .= $c if $c > 1;
+    $i_array_t += $c;
+  }
+
+  $desc{devdata_nfields} = 0;
+
+  if ($rechd & $rechd_mask_devdata_message) {
+    $self->offset($e);
+    $self->fill_buffer($devdata_min_length) || return undef;
+    $i = $self->offset;
+    ($nfields) = unpack($devdata_min_template, substr($$buffer, $i, $devdata_min_length));
+    $self->offset($i + $devdata_min_length);
+    $len = $nfields * $devdata_deffld_length;
+    $self->fill_buffer($len) || return undef;
+
+    my $devdata_by_index = $self->{devdata_by_index};
+    my @emsg;
+
+    if (ref $devdata_by_index ne 'HASH') {
+      push @emsg, 'No developer data id';
+      $devdata_by_index = +{};
+    }
+
+    for ($i = $self->offset, $e = $i + $len ; $i + $devdata_deffld_length <= $e ; $i += $devdata_deffld_length) {
+      my ($fnum, $size, $index) = unpack($devdata_deffld_template, substr($$buffer, $i, $devdata_deffld_length));
+      my $devdata = $devdata_by_index->{$index};
+      my ($fdesc, $name, $type, %attr);
+
+      if (ref $devdata eq 'HASH') {
+	my $fdesc_by_num = $devdata->{field_desc_by_num};
+
+	if (ref $fdesc_by_num eq 'HASH') {
+	  $fdesc = $fdesc_by_num->{$fnum};
+	}
+	else {
+	  push @emsg, "No field description message for developer data with index $index";
+	}
+      }
+      else {
+	push @emsg, "No developer data id with index $index";
+      }
+
+      if (ref $fdesc eq 'HASH') {
+	%attr = %$fdesc;
+	($type, $name) = @attr{qw(_type _name)};
+      }
+      else {
+	push @emsg, "No field with number $fnum for developer data with index $index";
+	$type = FIT_UINT8;
+      }
+
+      $name = $self->undocumented_field_name($fnum, $size, $type, $i_string) if !defined $name;
+      $name = "${index}_$name";
+
+      my $c = int($size / $size[$type] + 0.5);
+
+      $desc{'i_' . $name} = $i_array;
+      $desc{'o_' . $name} = $i_string;
+      $desc{'c_' . $name} = $c;
+      $desc{'s_' . $name} = $size[$type];
+      $desc{'a_' . $name} = \%attr if %attr;
+      $desc{'T_' . $name} = $type;
+      $desc{'N_' . $name} = $fnum;
+      $desc{'I_' . $name} = $invalid[$type];
+
+      $self->add_endian_converter($endian, $type, $c, $i_string, \@cvt);
+
+      $i_array += $c;
+      $i_string += $size;
+      $desc{template} .= ' ' . $template[$type];
+
+      if ($packfactor[$type] > 1) {
+	push @pi, $type, $i_array_t, $c, $i_array;
+	$c *= $packfactor[$type];
+      }
+
+      $desc{template} .= $c if $c > 1;
+      $i_array_t += $c;
+    }
+
+    $desc{devdata_nfields} = $nfields;
+    $self->error(join(' / ', @emsg)) if (@emsg);
   }
 
   $desc{endian_converter} = \@cvt if @cvt;
+  $desc{packfilter_index} = \@pi if @pi;
   $desc{message_length} = $i_string;
   $desc{array_length} = $i_array;
   $self->offset($e);
@@ -4862,13 +5338,13 @@ sub cat_definition_message {
     $p = \$bin;
   }
 
-  my @i_name = sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_/} keys %$desc;
+  my @i_name = sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_[A-Za-z]/} keys %$desc;
+  my @devdata_i_name = sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_\d+_/} keys %$desc;
+  my $mask = @devdata_i_name ? $rechd_mask_devdata_message : 0;
   my ($endian, $msgnum) = @{$desc}{qw(endian message_number)};
 
   $msgnum = unpack('n', pack('v', $msgnum)) if $endian != $my_endian;
-  $$p .= pack($defmsg_min_template, $desc->{local_message_type} | $rechd_mask_definition_message, 0, $endian, $msgnum, $#i_name + 1);
-
-  my $i_name;
+  $$p .= pack($defmsg_min_template, $desc->{local_message_type} | $rechd_mask_definition_message | $mask, 0, $endian, $msgnum, $#i_name + 1);
 
   while (@i_name) {
     my $name = shift @i_name;
@@ -4878,6 +5354,20 @@ sub cat_definition_message {
     my $size = $desc->{'s_' . $name};
 
     $$p .= pack($deffld_template, $desc->{'N_' . $name}, $desc->{'c_' . $name} * $size, $desc->{'T_' . $name} | ($size > 1 ? $deffld_mask_endian_p : 0));
+  }
+
+  if (@devdata_i_name) {
+    $$p .= pack($devdata_min_template, $#devdata_i_name + 1);
+
+    while (@devdata_i_name) {
+      my $name = shift @devdata_i_name;
+
+      $name =~ s/^i_//;
+
+      my $size = $desc->{'s_' . $name};
+
+      $$p .= pack($devdata_deffld_template, $desc->{'N_' . $name}, $desc->{'c_' . $name} * $size, $name =~ /^(\d+)_/);
+    }
   }
 
   $p;
@@ -4925,6 +5415,26 @@ sub fetch_data_message {
   # unpack('f'/'d', ...) unpacks to NaN
   my @v = unpack($desc->{template}, substr($$buffer, $i, $desc->{message_length}));
 
+  if (ref $desc->{packfilter_index} eq 'ARRAY') {
+    my $piv = $desc->{packfilter_index};
+    my ($i, $j);
+    my @v_t = @v;
+
+    @v = ($v_t[0]);
+
+    for ($i = 1, $j = 3 ; $j < @$piv ; $j += 4) {
+      my ($type, $i_array_t, $c, $i_array) = @$piv[($j - 3) .. $j];
+      my $delta = $packfactor[$type];
+
+      $i < $i_array_t and push @v, @v_t[$i .. ($i_array_t - 1)];
+      $i = $i_array_t + $c * $delta;
+
+      for (; $i_array_t < $i ; $i_array_t += $delta) {
+	push @v, $unpackfilter[$type]->(@v_t[$i_array_t .. ($i_array_t + $delta - 1)]);
+      }
+    }
+  }
+
   $self->offset($i + $desc->{message_length});
 
   my $cb = $desc->{callback};
@@ -4935,6 +5445,32 @@ sub fetch_data_message {
   }
   else {
     1;
+  }
+}
+
+sub pack_data_message {
+  my ($self, $desc, $v) = @_;
+
+  if (ref $desc->{packfilter_index} eq 'ARRAY') {
+    my @v = ($v->[0]);
+    my $piv = $desc->{packfilter_index};
+    my ($i, $j);
+
+    for ($i = 1, $j = 3 ; $j < @$piv ; $j += 4) {
+      my ($type, $i_array_t, $c, $i_array) = @$piv[($j - 3) .. $j];
+
+      $i < $i_array and push @v, @$v[$i .. ($i_array - 1)];
+      $i = $i_array + $c;
+
+      for (; $i_array < $i ; ++$i_array) {
+	push @v, $packfilter[$type]->($v->[$i_array]);
+      }
+    }
+
+    pack($desc->{template}, @v);
+  }
+  else {
+    pack($desc->{template}, @$v);
   }
 }
 
@@ -5172,6 +5708,8 @@ sub initialize {
      'unit_table' => +{},
      );
 
+  $self->data_message_callback_by_name(developer_data_id => \&syscallback_devdata_id);
+  $self->data_message_callback_by_name(field_description => \&syscallback_devdata_field_desc);
   $self;
 }
 
@@ -5471,6 +6009,10 @@ Following constants are automatically exported.
 
 =item FIT_UINT32
 
+=item FIT_SINT64
+
+=item FIT_UINT64
+
 =item FIT_STRING
 
 =item FIT_FLOAT16
@@ -5483,9 +6025,15 @@ Following constants are automatically exported.
 
 =item FIT_UINT32Z
 
+=item FIT_UINT64Z
+
 =item FIT_BYTE
 
-numbers representing types of field values in data messages.
+numbers representing base types of field values in data messages.
+
+=item FIT_BASE_TYPE_MAX
+
+the maximal number representing base types of field values in data messages.
 
 =item FIT_HEADER_LENGTH
 
@@ -5752,7 +6300,7 @@ of Perl representations.
 =over 4
 
 =item When C<fetch> method meets a data message,
-it calls a II<<callback function>> registered with C<data_message_callback_by_name> or C<data_message_callback_by_num>,
+it calls a I<<callback function>> registered with C<data_message_callback_by_name> or C<data_message_callback_by_num>,
 in the form
 
 I<<callback function>>-E<gt>(I<<object>>, I<<data message descriptor>>, I<<array of field values>>, I<<callback data>>, ...).
@@ -5761,6 +6309,27 @@ I<<callback function>>-E<gt>(I<<object>>, I<<data message descriptor>>, I<<array
 
 The return value of the function becomes the return value of C<fetch>.
 It is expected to be C<1> on success, or C<undef> on failure status.
+
+=head2 Developer data
+
+Fields in devloper data are given names of the form I<<developer data index>>C<_>I<<converted field name>>,
+and related informations are included I<<data message descriptors>> in the same way as the fields defined in the global .FIT profile.
+
+Each I<<converted field name>> is made from the value of C<field_name> field in the corresponding I<field description message>,
+after the following conversion rules:
+
+=over 4
+
+=item (1) Each sequence of space characters is converted to single C<_>.
+
+=item (2) Each of remaining non-word-constituend characters is converted to C<_> + 2 column hex representation of C<ord()> of the character + C<_>.
+
+=back
+
+=head2 64bit data
+
+If your perl lacks 64bit integer support,
+you need the module C<Math::BigInt>.
 
 =head1 AUTHOR
 
@@ -5780,6 +6349,30 @@ The author is very grateful to Garmin for supplying us free software programers 
 which includes detailed documetation about its proprietary file format.
 
 =head1 CHANGES
+
+=head2 0.20 --E<gt> 0.21
+
+=over 4
+
+support for developer data and 64bit integers introduced in FIT 2.0.
+
+64bit integers support is not tested at all.
+
+This version is based on
+
+=for html <blockquote><a href="https://github.com/mrihtar/Garmin-FIT">
+
+Matjaz Rihtar's git repository
+
+=for html </a></blockquote>
+
+version.
+So,
+regardless the above disclaimer,
+uses, modifications, and re-distributions of this version
+is restricted by the contents of the file LICENSE_LGPL_v2.1.txt in the git repository.
+
+=back
 
 =head2 0.14 --E<gt> 0.15
 
