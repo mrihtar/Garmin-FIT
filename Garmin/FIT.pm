@@ -6352,7 +6352,7 @@ which includes detailed documetation about its proprietary file format.
 
 =head2 0.21 --E<gt> 0.22
 
-Fix the issue
+fixes of the issues:
 
 =for html <blockquote><a href="https://github.com/mrihtar/Garmin-FIT/issues/1">
 
