@@ -6352,6 +6352,14 @@ which includes detailed documetation about its proprietary file format.
 
 =head2 0.21 --E<gt> 0.22
 
+Fix the issue
+
+=for html <blockquote><a href="https://github.com/mrihtar/Garmin-FIT/issues/1">
+
+Problems with big endian.
+
+=for html </a></blockquote>
+
 =over 4
 
 =item C<$defmsg_min_template>
