@@ -34,12 +34,13 @@ Currently supported FIT protocol and profile in this version of library is:
 
 FIT Protocol | FIT Profile
 ------------ |:------------
-1.8          | 20.00
+2.2          | 20.08
 
 Some of the messages and fields used in this implementation are not described
 in the latest official [FIT SDK] documentation and are therefore
 experimental/unsupported. This implementation was tested on FIT files from
 Garmin Edge device only. It works in both Windows and Unix environments.
+Support for 64-bit integers is not tested at all.
 
 Conversion scripts need to be run from the command line (there's no GUI).
 
