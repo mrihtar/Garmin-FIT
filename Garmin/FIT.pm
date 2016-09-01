@@ -6372,6 +6372,8 @@ the conversion specifier for I<<message number>> must be 'S', not 'v'.
 
 broken for arrays of multi-octets data.
 
+=back
+
 =head2 0.20 --E<gt> 0.21
 
 =over 4
