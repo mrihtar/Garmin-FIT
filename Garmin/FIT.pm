@@ -3,7 +3,6 @@ package Garmin::FIT;
 use FileHandle;
 use POSIX qw(BUFSIZ);
 use Time::Local;
-#use Math::BigFloat;
 
 BEGIN {
   $uint64_invalid = undef;
@@ -43,7 +42,7 @@ require Exporter;
 	     FIT_HEADER_LENGTH
 	     );
 
-$version = 0.22;
+$version = 0.23;
 $version_major_scale = 100;
 
 sub version_major {
@@ -419,6 +418,17 @@ sub trailing_garbages {
   }
 }
 
+sub maybe_chained {
+  my $self = shift;
+
+  if (@_) {
+    $self->{maybe_chained} = $_[0];
+  }
+  else {
+    $self->{maybe_chained};
+  }
+}
+
 sub really_clear_buffer {
   my $self = shift;
   my $buffer = $self->{buffer};
@@ -502,6 +512,17 @@ sub EOF {
   }
   else {
     $self->{EOF};
+  }
+}
+
+sub end_of_chunk {
+  my $self = shift;
+
+  if (@_) {
+    $self->{end_of_chunk} = $_[0];
+  }
+  else {
+    $self->{end_of_chunk};
   }
 }
 
@@ -5327,6 +5348,7 @@ sub fetch_definition_message {
   $desc{message_length} = $i_string;
   $desc{array_length} = $i_array;
   $self->offset($e);
+  1;
 }
 
 sub cat_definition_message {
@@ -5713,6 +5735,21 @@ sub initialize {
   $self;
 }
 
+sub reset {
+  my $self = shift;
+
+  $self->clear_buffer;
+
+  %$self = map {($_ => $self->{$_})} qw(error buffer FH data_message_callback unit_table
+					verbose cp_fit cp_fit_FH EOF use_gmtime numeric_date_time without_unit maybe_chained);
+
+  my $buffer = $self->buffer;
+
+  $self->file_read(length($$buffer));
+  $self->file_processed(0);
+  $self;
+}
+
 sub new {
   my $class = shift;
   my $self = +{};
@@ -5782,21 +5819,24 @@ sub fetch {
       }
     }
   }
-  elsif ($j > $self->file_size) {
+  elsif (!$self->maybe_chained && $j > $self->file_size) {
     $self->trailing_garbages($self->trailing_garbages + length($$buffer) - $i);
     $self->offset(length($$buffer));
+    1;
   }
   else {
     $self->crc_calc(length($$buffer)) if !defined $self->crc;
 
-    my ($crc_expected, $j);
+    my ($crc_expected, $k);
 
-    for ($crc_expected = 0, $j = $crc_octets ; $j > 0 ;) {
-      $crc_expected = ($crc_expected << 8) + ord(substr($$buffer, $i + --$j, 1));
+    for ($crc_expected = 0, $k = $crc_octets ; $k > 0 ;) {
+      $crc_expected = ($crc_expected << 8) + ord(substr($$buffer, $i + --$k, 1));
     }
 
     $self->crc_expected($crc_expected);
     $self->offset($i + $crc_octets);
+    $self->end_of_chunk(1);
+    !$self->maybe_chained;
   }
 }
 
@@ -6350,6 +6390,22 @@ which includes detailed documetation about its proprietary file format.
 
 =head1 CHANGES
 
+=head2 0.22 --E<gt> 0.23
+
+=over 4
+
+=item C<reset()>
+
+=item C<maybe_chained()>
+
+=item C<end_of_chunk()>
+
+new methods to support chained FIT files.
+
+=item C<fetch()>
+
+use new methods C<maybe_chained()> and C<end_of_chunk()> to support chained FIT files.
+
 =head2 0.21 --E<gt> 0.22
 
 fixes of the issues:
@@ -6392,9 +6448,9 @@ Matjaz Rihtar's git repository
 
 version.
 So,
-regardless the above disclaimer,
+regardless of the above disclaimer,
 uses, modifications, and re-distributions of this version
-is restricted by the contents of the file LICENSE_LGPL_v2.1.txt in the git repository.
+are restricted by the contents of the file LICENSE_LGPL_v2.1.txt in the git repository.
 
 =back
 

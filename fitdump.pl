@@ -8,8 +8,9 @@ $semicircles_to_deg = 1 if !defined $semicircles_to_deg;
 $mps_to_kph = 1 if !defined $mps_to_kph;
 $without_unit = 0 if !defined $without_unit;
 $show_version = 0 if !defined $show_version;
+$maybe_chained = 0 if !defined $maybe_chained;
 
-my $version = "0.05x";
+my $version = "0.06x";
 
 if ($show_version) {
   print $version, "\n";
@@ -43,6 +44,7 @@ sub fetch_from {
   $obj->semicircles_to_degree($semicircles_to_deg);
   $obj->mps_to_kph($mps_to_kph);
   $obj->without_unit($without_unit);
+  $obj->maybe_chained($maybe_chained);
   $obj->file($fn);
 
   my $o_cbmap = $obj->data_message_callback_by_name('');
@@ -59,53 +61,67 @@ sub fetch_from {
     return;
   }
 
-  my ($fsize, $proto_ver, $prof_ver, $h_extra, $h_crc_expected, $h_crc_calculated) = $obj->fetch_header;
+  my $chained;
 
-  unless (defined $fsize) {
-    print STDERR $obj->error, "\n";
-    $obj->close;
-    return;
-  }
+  for (;;) {
+    my ($fsize, $proto_ver, $prof_ver, $h_extra, $h_crc_expected, $h_crc_calculated) = $obj->fetch_header;
 
-  my ($proto_major, $proto_minor) = $obj->protocol_version_major($proto_ver);
-  my ($prof_major, $prof_minor) = $obj->profile_version_major($prof_ver);
-
-  printf "File size: %lu bytes, protocol ver: %u.%02u, profile ver: %u.%02u\n", $fsize, $proto_major, $proto_minor, $prof_major, $prof_minor;
-
-  if ($h_extra ne '') {
-    print "Extra bytes in file header";
-
-    my ($i, $n);
-
-    for ($i = 0, $n = length($h_extra) ; $i < $n ; ++$i) {
-      print "\n" if !($i % 16);
-      print ' ' if !($i % 4);
-      printf " %02x", ord(substr($h_extra, $i, 1));
+    unless (defined $fsize) {
+      $obj->EOF and $chained and last;
+      print STDERR $obj->error, "\n";
+      $obj->close;
+      return;
     }
 
-    print "\n";
-  }
+    my ($proto_major, $proto_minor) = $obj->protocol_version_major($proto_ver);
+    my ($prof_major, $prof_minor) = $obj->profile_version_major($prof_ver);
 
-  if (defined $h_crc_calculated) {
-    if ($h_crc_expected != $h_crc_calculated) {
-      printf "File header CRC: expected=0x%04X, calculated=0x%04X\n", $h_crc_expected, $h_crc_calculated;
+    print "\n" if $chained;
+    printf "File size: %lu bytes, protocol ver: %u.%02u, profile ver: %u.%02u\n", $fsize, $proto_major, $proto_minor, $prof_major, $prof_minor;
+
+    if ($h_extra ne '') {
+      print "Extra bytes in file header";
+
+      my ($i, $n);
+
+      for ($i = 0, $n = length($h_extra) ; $i < $n ; ++$i) {
+	print "\n" if !($i % 16);
+	print ' ' if !($i % 4);
+	printf " %02x", ord(substr($h_extra, $i, 1));
+      }
+
+      print "\n";
+    }
+
+    if (defined $h_crc_calculated) {
+      if ($h_crc_expected != $h_crc_calculated) {
+	printf "File header CRC: expected=0x%04X, calculated=0x%04X\n", $h_crc_expected, $h_crc_calculated;
+      } else {
+	printf "File header CRC: 0x%04X\n", $h_crc_calculated;
+      }
+    }
+
+    1 while $obj->fetch;
+
+    print STDERR $obj->error, "\n" if !$obj->end_of_chunk && !$obj->EOF;
+    if ($obj->crc_expected != $obj->crc) {
+      printf "CRC: expected=0x%04X, calculated=0x%04X\n", $obj->crc_expected, $obj->crc;
     } else {
-      printf "File header CRC: 0x%04X\n", $h_crc_calculated;
+      printf "CRC: 0x%04X\n", $obj->crc_expected;
+    }
+
+    if ($maybe_chained) {
+      $obj->reset;
+      $chained = 1;
+    }
+    else {
+      my $garbage_size = $obj->trailing_garbages;
+
+      print "Trailing $garbage_size bytes of garbage skipped\n" if $garbage_size > 0;
+      last;
     }
   }
 
-  1 while $obj->fetch;
-
-  print STDERR $obj->error, "\n" if !$obj->EOF;
-  if ($obj->crc_expected != $obj->crc) {
-    printf "CRC: expected=0x%04X, calculated=0x%04X\n", $obj->crc_expected, $obj->crc;
-  } else {
-    printf "CRC: 0x%04X\n", $obj->crc_expected;
-  }
-
-  my $garbage_size = $obj->trailing_garbages;
-
-  print "Trailing $garbage_size bytes of garbage skipped\n" if $garbage_size > 0;
   $obj->close;
 }
 
@@ -136,7 +152,7 @@ Fitdump - Show contents of Garmin .FIT files
 =head1 SYNOPSIS
 
   fitdump -show_version=1
-  fitdump [-semicircles_to_deg=(0|1)] [-mps_to_kph=(0|1)] [-use_gmtime=(0|1)] [<file> ... ]
+  fitdump [-semicircles_to_deg=(0|1)] [-mps_to_kph=(0|1)] [-use_gmtime=(0|1)] [-maybe_chained=(0|1)] [<file> ... ]
 
 =head1 DESCRIPTION
 
@@ -160,7 +176,7 @@ C<Garmin::FIT>.
 
 =for html </a></blockquote>
 
-of version 0.04 or later.
+of version 0.23 or later.
 The main role of this program is to give a sample application of the class.
 
 =head1 AUTHOR
@@ -176,6 +192,22 @@ Anyone can use, modify, and re-distibute this program
 without any restriction.
 
 =head1 CHANGES
+
+=head2 0.05 --E<gt> 0.06
+
+=over 4
+
+=item C<$maybe_chained>
+
+new option.
+The true value indicates that the input may be a chained FIT file.
+Default is 0.
+
+=item C<fetch_from()>
+
+use new method C<reset()>, C<maybe_chained()>, and C<end_of_chunk()> to support chained FIT files.
+
+=back
 
 =head2 0.04 --E<gt> 0.05
 
