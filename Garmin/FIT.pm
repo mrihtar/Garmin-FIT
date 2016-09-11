@@ -6406,6 +6406,8 @@ new methods to support chained FIT files.
 
 use new methods C<maybe_chained()> and C<end_of_chunk()> to support chained FIT files.
 
+=back
+
 =head2 0.21 --E<gt> 0.22
 
 fixes of the issues:
