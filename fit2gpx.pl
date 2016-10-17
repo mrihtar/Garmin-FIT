@@ -208,7 +208,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.05  Copyright (c) 2016 Matjaz Rihtar  (July 1, 2016)\n";
+    printf STDERR "fit2gpx 2.07  Copyright (c) 2016 Matjaz Rihtar  (Oct 17, 2016)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2015 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -334,19 +334,27 @@ sub FillGlobalVars {
 
   # Find profile data in first user_profile
   $m = @{$profiles}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "friendly_name") { my $friendlyName = $v; }
-    elsif ($k eq "weight") { $g_weight = $v; } # kg
-    elsif ($k eq "gender") { $g_gender = $v; }
-    elsif ($k eq "age") { $g_age = $v; } # years
-    elsif ($k eq "height") { $g_height = $v; } # m
-    elsif ($k eq "resting_heart_rate") { $g_resHr = $v; }
-    elsif ($k eq "default_max_heart_rate") { $g_hrMax = $v; }
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "friendly_name") { my $friendlyName = $v; }
+      elsif ($k eq "weight") { $g_weight = $v; } # kg
+      elsif ($k eq "gender") { $g_gender = $v; }
+      elsif ($k eq "age") { $g_age = $v; } # years
+      elsif ($k eq "height") { $g_height = $v; } # m
+      elsif ($k eq "resting_heart_rate") { $g_resHr = $v; }
+      elsif ($k eq "default_max_heart_rate") { $g_hrMax = $v; }
+    }
   }
 
+  my $undef_gender = 0;
+  if (!defined $g_gender) { $g_gender = "male"; $undef_gender = 1; }
   my $undef_age = 0;
   if (!defined $g_age) { $g_age = 40; $undef_age = 1; }
+  my $undef_weight = 0;
+  if (!defined $g_weight) { $g_weight = 75.0; $undef_weight = 1; }
+  my $undef_resHr = 0;
+  if (!defined $g_resHr) { $g_resHr = 72; $undef_resHr = 1; }
 
   my $undef_hrMax = 0;
   if (!defined $g_hrMax) {
@@ -378,12 +386,17 @@ sub FillGlobalVars {
     }
   }
 
+  my $undef_wheelSize = 0;
+  if (!defined $g_wheelSize) { $g_wheelSize = 2326; $undef_wheelSize = 1; }
+
   # find zones data in first zones_target
   $m = @{$zones}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "functional_threshold_power") { $g_funcThresPower = $v; }
-    elsif ($k eq "max_heart_rate") { $g_hrMax1 = $v; } # ???
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "functional_threshold_power") { $g_funcThresPower = $v; }
+      elsif ($k eq "max_heart_rate") { $g_hrMax1 = $v; } # ???
+    }
   }
 
   my $undef_funcThresPower = 0;
@@ -447,8 +460,12 @@ sub FillGlobalVars {
   # Calc missing aver/min/max alt, hr, cad and temp from all records
   ProcessRecords();
 
+  if ($undef_gender) { $g_gender = undef; }
   if ($undef_age) { $g_age = undef; }
+  if ($undef_weight) { $g_weight = undef; }
+  if ($undef_resHr) { $g_resHr = undef; }
   if ($undef_hrMax) { $g_hrMax = undef; }
+  if ($undef_wheelSize) { $g_wheelSize = undef; }
   if ($undef_funcThresPower) { $g_funcThresPower = undef; }
   if ($undef_homeAlt) { $g_homeAlt = undef; }
   if ($undef_bikeWeight) { $g_bikeWeight = undef; }
