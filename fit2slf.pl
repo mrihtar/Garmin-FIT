@@ -658,8 +658,13 @@ sub Median {
 #==============================================================================
 # Print activity block (1st line, header) in slf
 sub PrintSlfHeader {
+  my @wday = qw(Sun Mon Tue Wed Thu Fri Sat);
+  my @mon = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
   my @lt = localtime($g_startTime);
-  $f_startTime = POSIX::strftime("%a %b %e %T GMT%z %Y", @lt);
+
+# Don't use POSIX::strftime("%a %b %e %T GMT%z %Y", @lt) because of locale
+  $f_startTime = $wday[$lt[6]] . " " . $mon[$lt[4]];
+  $f_startTime .= POSIX::strftime(" %e %T GMT%z %Y", @lt);
   $f_startTime =~ s/ +/ /g;
 
   printf "<Activity";
