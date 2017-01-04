@@ -156,6 +156,7 @@ my $filt_alt = [];
 #------------------------------------------------------------------------------
 # Command line parsing
 my $overwrite = 0;
+my $fpcalc = 0; # force power calculation
 my $garmin_ext = 1; # 0 means cluetrust_ext
 my $rev_coord = 0;  # default: lat=... lon=...
 my $file;
@@ -164,6 +165,7 @@ foreach (@ARGV) {
   if ($arg eq "-v") { Usage(1); }
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
+  elsif ($arg eq "-p") { $fpcalc = 1; }
   elsif ($arg eq "-g") { $garmin_ext = 1; }
   elsif ($arg eq "-c") { $garmin_ext = 0; }
   elsif ($arg eq "-r") { $rev_coord = 1; }
@@ -208,16 +210,17 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.07  Copyright (c) 2016 Matjaz Rihtar  (Oct 17, 2016)\n";
-    printf STDERR "Garmin::FIT  Copyright (c) 2010-2015 Kiyokazu Suto\n";
+    printf STDERR "fit2gpx 2.08  Copyright (c) 2016-2017 Matjaz Rihtar  (Jan 4, 2017)\n";
+    printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] [-g|-c] [-r] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-g|-c] [-r] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
+    printf STDERR "  -p  Force power calculation (default: use fit power data if present)\n";
     printf STDERR "  -g  Use Garmin extension format for hr/cad/temp (default)\n";
     printf STDERR "      <gpxtpx:TrackPointExtension>, <gpxtpx:...>: atemp, hr, cad\n";
     printf STDERR "  -c  Use Cluetrust extension format for hr/cad/temp\n";
@@ -457,7 +460,7 @@ sub FillGlobalVars {
   my $undef_bikeWeight;
   if (!defined $g_bikeWeight) { $g_bikeWeight = 12.3; $undef_bikeWeight = 1; }
 
-  # Calc missing aver/min/max alt, hr, cad and temp from all records
+  # Calc missing aver/min/max alt, power, hr, cad and temp from all records
   ProcessRecords();
 
   if ($undef_gender) { $g_gender = undef; }
@@ -899,8 +902,8 @@ sub ProcessRecord {
 
   my $timestamp = undef;
   my $lat = undef; my $lon = undef; my $dist = undef;
-  my $alt = undef; my $speed = undef; my $hr = undef;
-  my $cad = undef; my $temp = undef;
+  my $alt = undef; my $speed = undef; my $power = undef;
+  my $hr = undef; my $cad = undef; my $temp = undef;
 
   my $k; my $v;
   while (($k, $v) = each %mh) {
@@ -910,6 +913,7 @@ sub ProcessRecord {
     elsif ($k eq "distance") { $dist = $v; }
     elsif ($k eq "altitude") { $alt = $v; }
     elsif ($k eq "speed") { $speed = $v; }
+    elsif ($k eq "power") { $power = $v; }
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
@@ -927,6 +931,7 @@ sub ProcessRecord {
     push @$alts, $alt;
     if (!defined $speed) { $speed = $prev_speed; }
     else { $speed /= 3.6; } # m/s
+  # if (!defined $power) { calculate power (see down below) }
     if (!defined $hr) { $hr = $prev_hr; }
     else {
       if ($hr < $g_minHr) { $g_minHr = $hr; }
@@ -1148,10 +1153,11 @@ sub ProcessRecord {
     my $Ptot = $Pnet / $Ec;
   # printf STDERR "Ptot = %g\n", $Ptot;
 
-    my $power;
-    if ($Ptot < 0) { $power = 0; }
-#   else { $power = kalman_update(\%pwr_state, $Ptot); }
-    else { $power = $Ptot; }
+    if (!defined $power || $fpcalc) {
+      if ($Ptot < 0) { $power = 0; }
+#     else { $power = kalman_update(\%pwr_state, $Ptot); }
+      else { $power = $Ptot; }
+    }
   # printf STDERR "power = %g\n", $power;
 
     if ($power < $g_minPower) { $g_minPower = $power; }
@@ -1463,8 +1469,8 @@ sub PrintGpxLap {
     elsif ($k eq "max_heart_rate") { $maxhr = $v; }
     elsif ($k eq "avg_cadence") { $avgcad = $v; }
     elsif ($k eq "max_cadence") { $maxcad = $v; }
-    elsif ($k eq "avg_power") { $avgpower = $v; } # invalid
-    elsif ($k eq "max_power") { $maxpower = $v; } # invalid
+    elsif ($k eq "avg_power") { $avgpower = $v; } # invalid ???
+    elsif ($k eq "max_power") { $maxpower = $v; } # invalid ???
     elsif ($k eq "lap_trigger") { $ltrigger = conv_trigger($v); }
   }
 
@@ -1586,7 +1592,7 @@ sub PrintGpxLap {
 #   printf "%s<!-- percent_over_intensity_zone>%.1f</percent_over_intensity_zone -->\n",
 #     $indent x 3, $g_timeOverIntZone / $tot_time * 100;
 
-    $avgpower = Average(@$powers) if !defined $avgpower;
+    $avgpower = Average(@$powers) if (!defined $avgpower || $fpcalc);
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "avg_power", "avg", $avgpower;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",

@@ -120,8 +120,8 @@ $ fit2gpx.pl -c input.fit
 </pre>
 Difference between them is in the syntax how heart rate, cadence, temperature &
 power data is stored in the file. In both cases a Cluetrust extension
-**&lt;gpxdata:lap&gt;** will be added to the end of file, where the following
-average/min/max values are stored:
+**&lt;gpxdata:lap&gt;** (one for each lap) will be added to the end of file,
+where the following average/min/max values are stored:
 
 *startPoint, endPoint, startTime, elapsedTime, calories, distance, avg_speed,
 max_speed, min_altitude, avg_altitude, max_altitude, total_ascent, total_descent,
@@ -131,6 +131,9 @@ min_percent_hrmax, avg_percent_hrmax, max_percent_hrmax, time_under_target_zone,
 time_in_target_zone, time_over_target_zone, avg_power, avg_power_KJ,
 avg_power_W_per_Kg, max_power, avg_cadence, max_cadence, min_temperature,
 avg_temperature, max_temperature, total_cycles, total_records*
+
+If ```input.fit``` contains power data from power meter, the real power
+average will be used instead of calculated one.
 
 #### FIT to SLF (SigmaSport log file)
 
@@ -149,7 +152,9 @@ data found in FIT file. Specifically, power is calculated according to the
 formulas described in J.C. Martin's paper
 [Validation of a Mathematical Model for Road Cycling Power]
 from 1998. You can change some of the parameters used for power calculation
-in **ini** file (see [Config (ini) File Syntax]).
+in **ini** file (see [Config (ini) File Syntax]). If ```input.fit``` contains
+power data from power meter, the real power measurements will be used instead
+of calculated ones.
 
 Resulting ```input.slf``` can be directly imported in [SigmaSport Data Center],
 which is a perfect software for **offline** evaluation of cycling statistics

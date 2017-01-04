@@ -156,12 +156,14 @@ my $filt_alt = [];
 #------------------------------------------------------------------------------
 # Command line parsing
 my $overwrite = 0;
+my $fpcalc = 0; # force power calculation
 my $file;
 foreach (@ARGV) {
   my $arg = $_;
   if ($arg eq "-v") { Usage(1); }
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
+  elsif ($arg eq "-p") { $fpcalc = 1; }
   else { $file = $arg; }
 }
 
@@ -203,16 +205,17 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.07  Copyright (c) 2016 Matjaz Rihtar  (Oct 17, 2016)\n";
-    printf STDERR "Garmin::FIT  Copyright (c) 2010-2015 Kiyokazu Suto\n";
+    printf STDERR "fit2slf 2.08  Copyright (c) 2016-2017 Matjaz Rihtar  (Jan 4, 2017)\n";
+    printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
+    printf STDERR "  -p  Force power calculation (default: use fit power data if present)\n";
   }
   _exit(1);
 } # Usage
@@ -446,7 +449,7 @@ sub FillGlobalVars {
   open TMP, ">", undef or die $!."\n";
   select TMP;
 
-  # Calc missing aver/min/max alt, hr, cad and temp from all records
+  # Calc missing aver/min/max alt, power, hr, cad and temp from all records
   PrintSlfEntries();
 
   select STDOUT;
@@ -1154,7 +1157,7 @@ sub PrintSlfEntries {
 } # PrintSlfEntries
 
 #==============================================================================
-# Print single track point from fit file
+# Print single track point (record) from fit file
 # This routine also stores all/min/max values for later aver/min/max processing.
 # Power is calculated according to J.C. Martin et al. (1998).
 # For power and incline calculation smoothed altitude data is used.
@@ -1165,8 +1168,8 @@ sub PrintSlfEntry {
 
   my $timestamp = undef;
   my $lat = undef; my $lon = undef; my $dist = undef;
-  my $alt = undef; my $speed = undef; my $hr = undef;
-  my $cad = undef; my $temp = undef;
+  my $alt = undef; my $speed = undef; my $power = undef;
+  my $hr = undef; my $cad = undef; my $temp = undef;
 
   my $k; my $v;
   while (($k, $v) = each %mh) {
@@ -1176,6 +1179,7 @@ sub PrintSlfEntry {
     elsif ($k eq "distance") { $dist = $v; }
     elsif ($k eq "altitude") { $alt = $v; }
     elsif ($k eq "speed") { $speed = $v; }
+    elsif ($k eq "power") { $power = $v; }
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
@@ -1195,6 +1199,7 @@ sub PrintSlfEntry {
     push @$alts, $alt;
     if (!defined $speed) { $speed = $prev_speed; }
     else { $speed /= 3.6; } # m/s
+  # if (!defined $power) { calculate power (see down below) }
     if (!defined $hr) { $hr = $prev_hr; }
     else {
       if ($hr < $g_minHr) { $g_minHr = $hr; }
@@ -1416,10 +1421,11 @@ sub PrintSlfEntry {
     my $Ptot = $Pnet / $Ec;
   # printf STDERR "Ptot = %g\n", $Ptot;
 
-    my $power;
-    if ($Ptot < 0) { $power = 0; }
-#   else { $power = kalman_update(\%pwr_state, $Ptot); }
-    else { $power = $Ptot; }
+    if (!defined $power || $fpcalc) {
+      if ($Ptot < 0) { $power = 0; }
+#     else { $power = kalman_update(\%pwr_state, $Ptot); }
+      else { $power = $Ptot; }
+    }
   # printf STDERR "power = %g\n", $power;
 
     if ($power < $g_minPower) { $g_minPower = $power; }
