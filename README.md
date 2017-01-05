@@ -34,7 +34,7 @@ Currently supported FIT protocol and profile in this version of library is:
 
 FIT Protocol | FIT Profile
 ------------ |:------------
-2.2          | 20.08
+2.3          | 20.21
 
 Some of the messages and fields used in this implementation are not described
 in the latest official [FIT SDK] documentation and are therefore

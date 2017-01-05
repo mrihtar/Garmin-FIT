@@ -21,28 +21,28 @@ require Exporter;
 @ISA = qw(Exporter);
 
 @EXPORT = qw(
-	     FIT_ENUM
-	     FIT_SINT8
-	     FIT_UINT8
-	     FIT_SINT16
-	     FIT_UINT16
-	     FIT_SINT32
-	     FIT_UINT32
-	     FIT_SINT64
-	     FIT_UINT64
-	     FIT_STRING
-	     FIT_FLOAT32
-	     FIT_FLOAT64
-	     FIT_UINT8Z
-	     FIT_UINT16Z
-	     FIT_UINT32Z
-	     FIT_UINT64Z
-	     FIT_BYTE
-	     FIT_BASE_TYPE_MAX
-	     FIT_HEADER_LENGTH
-	     );
+             FIT_ENUM
+             FIT_SINT8
+             FIT_UINT8
+             FIT_SINT16
+             FIT_UINT16
+             FIT_SINT32
+             FIT_UINT32
+             FIT_SINT64
+             FIT_UINT64
+             FIT_STRING
+             FIT_FLOAT32
+             FIT_FLOAT64
+             FIT_UINT8Z
+             FIT_UINT16Z
+             FIT_UINT32Z
+             FIT_UINT64Z
+             FIT_BYTE
+             FIT_BASE_TYPE_MAX
+             FIT_HEADER_LENGTH
+             );
 
-$version = 0.24;
+$version = 0.25;
 $version_major_scale = 100;
 
 sub version_major {
@@ -139,7 +139,7 @@ sub protocol_version_from_string {
   }
 }
 
-$protocol_version = &protocol_version_from_string(undef, "2.2");
+$protocol_version = &protocol_version_from_string(undef, "2.3");
 @protocol_version = &protocol_version_major(undef, $protocol_version);
 $protocol_version_header_crc_started = &protocol_version_from_string(undef, "1.0");
 
@@ -194,7 +194,7 @@ sub profile_version_from_string {
   }
 }
 
-$profile_version = &profile_version_from_string(undef, "20.08");
+$profile_version = &profile_version_from_string(undef, "20.21");
 @profile_version = &profile_version_major(undef, $profile_version);
 
 sub profile_version_string {
@@ -469,11 +469,11 @@ sub clear_buffer {
       my $FH = $self->cp_fit_FH;
 
       if (&safe_isa($FH, 'FileHandle') && $FH->opened) {
-	my $buffer = $self->buffer;
+        my $buffer = $self->buffer;
 
-	$FH->print(substr($$buffer, 0, $self->offset));
-	$FH->flush;
-	$self->really_clear_buffer;
+        $FH->print(substr($$buffer, 0, $self->offset));
+        $FH->flush;
+        $self->really_clear_buffer;
       }
     }
     else {
@@ -540,21 +540,21 @@ sub fill_buffer {
       $self->file_read($self->file_read + $n);
 
       if (defined $self->file_size) {
-	if (defined $self->crc) {
-	  $self->crc_calc($n);
-	}
-	else {
-	  $self->crc_calc(length($$buffer));
-	}
+        if (defined $self->crc) {
+          $self->crc_calc($n);
+        }
+        else {
+          $self->crc_calc(length($$buffer));
+        }
       }
     }
     else {
       if (defined $n) {
-	$self->error("unexpected EOF");
-	$self->EOF(1);
+        $self->error("unexpected EOF");
+        $self->EOF(1);
       }
       else {
-	$self->error("read(FH): $!");
+        $self->error("read(FH): $!");
       }
 
       return undef;
@@ -603,17 +603,17 @@ sub fetch_header {
 
     if ($sig != $FIT_signature) {
       $self->error("not a .FIT header (" .
-		   join('', map {($_ ne "\\" && 0x20 >= ord($_) && ord($_) <= 0x7E) ? $_ : sprintf("\\x%02X", ord($_))} split //, pack('V', $sig))
-		   . " ne '$FIT_signature_string')");
+                   join('', map {($_ ne "\\" && 0x20 >= ord($_) && ord($_) <= 0x7E) ? $_ : sprintf("\\x%02X", ord($_))} split //, pack('V', $sig))
+                   . " ne '$FIT_signature_string')");
       ();
     }
     else {
       my ($crc_expected, $crc_calculated);
 
       if ($proto_ver >= $protocol_version_header_crc_started && length($extra) >= $header_crc_length) {
-	$crc_expected = unpack($header_crc_template, substr($extra, -$header_crc_length));
-	substr($extra, -$header_crc_length) = '';
-	$crc_calculated = $self->crc_of_string(0, \$h_min, 0, $header_length);
+        $crc_expected = unpack($header_crc_template, substr($extra, -$header_crc_length));
+        substr($extra, -$header_crc_length) = '';
+        $crc_calculated = $self->crc_of_string(0, \$h_min, 0, $header_length);
       }
 
       my $f_size = $f_len + $h_len;
@@ -621,8 +621,8 @@ sub fetch_header {
       $self->file_size($f_size);
 
       unless (defined $self->crc) {
-	$self->crc(0);
-	$self->crc_calc(length($$buffer));
+        $self->crc(0);
+        $self->crc_calc(length($$buffer));
       }
 
       ($f_size, $proto_ver, $prof_ver, $extra, $crc_expected, $crc_calculated);
@@ -927,6 +927,7 @@ else {
      'segment_leaderboard_entry' => 149,
      'segment_point' => 150,
      'segment_file' => 151,
+     'watchface_settings' => 159,
      'gps_metadata' => 160,
      'camera_event' => 161,
      'timestamp_correlation' => 162,
@@ -941,6 +942,7 @@ else {
      'video_title' => 185,
      'video_description' => 186,
      'video_clip' => 187,
+     'ohr_settings' => 188,
      'exd_screen_configuration' => 200,
      'exd_data_field_configuration' => 201,
      'exd_data_concept_configuration' => 202,
@@ -977,10 +979,10 @@ else {
      'min' => 0x10000000,
      '_min' => 0x10000000,
      '_out_of_range' => 'seconds from device power on',
-     '_offset' => -timegm(0, 0, 0, 31, 11, 1989), # 1989-12-31 00:00:00 GMT
+     '_offset' => -timegm(0, 0, 0, 31, 11, 1989), # 1989-12-31 00:00:00 UTC
    },
 
-   'local_date_time' => +{
+   'local_date_time' => +{ # same as above, but in local time zone
      '_base_type' => FIT_UINT32,
      'min' => 0x10000000,
    },
@@ -995,7 +997,7 @@ else {
 
    'device_index' => +{ # dynamically created, as devices are added
      '_base_type' => FIT_UINT8,
-     'device0' => 0, # local, v6.00, garmin prod. edge520 (2067)
+     'creator' => 0, # creator of the file is always device index 0
      'device1' => 1, # local, v6.00, garmin prod. edge520 (2067)
      'device2' => 2, # local, v3.00, garmin prod. 1619
      'heart_rate' => 3, # antplus
@@ -1216,7 +1218,8 @@ else {
    'display_measure' => +{
      '_base_type' => FIT_ENUM,
      'metric' => 0,
-     'statue' => 1,
+     'statute' => 1,
+     'nautical' => 2,
    },
 
    'display_heart' => +{
@@ -1278,12 +1281,19 @@ else {
      'swedish_ref_99_grid' => 41,
    },
 
+   'switch' => +{
+     '_base_type' => FIT_ENUM,
+     'off' => 0,
+     'on' => 1,
+     'auto' => 2,
+   },
+
    'sport' => +{
      '_base_type' => FIT_ENUM,
      'generic' => 0,
      'running' => 1,
      'cycling' => 2,
-     'transition' => 3,
+     'transition' => 3, # multisport transition
      'fitness_equipment' => 4,
      'swimming' => 5,
      'basketball' => 6,
@@ -1328,6 +1338,7 @@ else {
      'tactical' => 45,
      'jumpmaster' => 46,
      'boxing' => 47,
+     'floor_climbing' => 48,
      'all' => 254,
    },
 
@@ -1403,58 +1414,66 @@ else {
      'boxing' => 0x80,
    },
 
+   'sport_bits_6' => +{
+     '_base_type' => FIT_UINT8Z,
+     'floor_climbing' => 0x01,
+   },
+
    'sub_sport' => +{
      '_base_type' => FIT_ENUM,
      'generic' => 0,
-     'treadmill' => 1,
-     'street' => 2,
-     'trail' => 3,
-     'track' => 4,
-     'spin' => 5,
-     'indoor_cycling' => 6,
-     'road' => 7,
-     'mountain' => 8,
-     'downhill' => 9,
-     'recumbent' => 10,
-     'cyclocross' => 11,
-     'hand_cycling' => 12,
-     'track_cycling' => 13,
-     'indoor_rowing' => 14,
-     'elliptical' => 15,
-     'stair_climbing' => 16,
-     'lap_swimming' => 17,
-     'open_water' => 18,
-     'flexibility_training' => 19,
-     'strength_training' => 20,
-     'warm_up' => 21,
-     'match' => 22,
-     'exercise' => 23,
-     'challenge' => 24,
-     'indoor_skiing' => 25,
-     'cardio_training' => 26,
-     'indoor_walking' => 27,
-     'e_bike_fitness' => 28,
-     'bmx' => 29,
-     'casual_walking' => 30,
-     'speed_walking' => 31,
-     'bike_to_run_transition' => 32,
-     'run_to_bike_transition' => 33,
-     'swim_to_bike_transition' => 34,
-     'atv' => 35,
-     'motocross' => 36,
-     'backcountry' => 37,
-     'resort' => 38,
-     'rc_drone' => 39,
-     'wingsuit' => 40,
-     'whitewater' => 41,
-     'skate_skiing' => 42,
-     'yoga' => 43,
-     'pilates' => 44,
-     'indoor_running' => 45,
-     'gravel_cycling' => 46,
-     'e_bike_mountain' => 47,
-     'commuting' => 48,
-     'mixed_surface' => 49,
+     'treadmill' => 1, # run/fitness equipment
+     'street' => 2, # run
+     'trail' => 3, # run
+     'track' => 4, # run
+     'spin' => 5, # cycling
+     'indoor_cycling' => 6, # cycling/fitness equipment
+     'road' => 7, # cycling
+     'mountain' => 8, # cycling
+     'downhill' => 9, # cycling
+     'recumbent' => 10, # cycling
+     'cyclocross' => 11, # cycling
+     'hand_cycling' => 12, # cycling
+     'track_cycling' => 13, # cycling
+     'indoor_rowing' => 14, # fitness equipment
+     'elliptical' => 15, # fitness equipment
+     'stair_climbing' => 16, # fitness equipment
+     'lap_swimming' => 17, # swimming
+     'open_water' => 18, # swimming
+     'flexibility_training' => 19, # training
+     'strength_training' => 20, # training
+     'warm_up' => 21, # tennis
+     'match' => 22, # tennis
+     'exercise' => 23, # tennis
+     'challenge' => 24, # tennis
+     'indoor_skiing' => 25, # fitness equipment
+     'cardio_training' => 26, # training
+     'indoor_walking' => 27, # walking/fitness equipment
+     'e_bike_fitness' => 28, # e-biking
+     'bmx' => 29, # cycling
+     'casual_walking' => 30, # walking
+     'speed_walking' => 31, # walking
+     'bike_to_run_transition' => 32, # transition
+     'run_to_bike_transition' => 33, # transition
+     'swim_to_bike_transition' => 34, # transition
+     'atv' => 35, # motorcycling
+     'motocross' => 36, # motorcycling
+     'backcountry' => 37, # alpine skiing/snowboarding
+     'resort' => 38, # alpine skiing/snowboarding
+     'rc_drone' => 39, # flying
+     'wingsuit' => 40, # flying
+     'whitewater' => 41, # kayaking/rafting
+     'skate_skiing' => 42, # cross country skiing
+     'yoga' => 43, # training
+     'pilates' => 44, # training
+     'indoor_running' => 45, # run/fitness equipment
+     'gravel_cycling' => 46, # cycling
+     'e_bike_mountain' => 47, # cycling
+     'commuting' => 48, # cycling
+     'mixed_surface' => 49, # cycling
+     'navigate' => 50,
+     'track_me' => 51,
+     'map' => 52,
      'all' => 254,
    },
 
@@ -1524,6 +1543,18 @@ else {
      'military' => 2,
      'hour_12_with_seconds' => 3,
      'hour_24_with_seconds' => 4,
+     'utc' => 5,
+   },
+
+   'backlight_mode' => +{
+     '_base_type' => FIT_ENUM,
+     'off' => 0,
+     'manual' => 1,
+     'key_and_messages' => 2,
+     'auto_brightness' => 3,
+     'smart_notifications' => 4,
+     'key_and_messages_night' => 5,
+     'key_and_messages_and_smart_notifications' => 6,
    },
 
    'date_mode' => +{
@@ -1669,6 +1700,8 @@ else {
      'calories' => 2,
      'frequency' => 3,
      'steps' => 4,
+     'ascent' => 5,
+     'active_minutes' => 6,
    },
 
    'goal_recurrence' => +{
@@ -1679,6 +1712,13 @@ else {
      'monthly' => 3,
      'yearly' => 4,
      'custom' => 5,
+   },
+
+   'goal_source' => +{
+     '_base_type' => FIT_ENUM,
+     'auto' => 0,
+     'community' => 1,
+     'user' => 2,
    },
 
    'schedule' => +{
@@ -1821,6 +1861,10 @@ else {
      'limits_technology' => 103,
      'topaction_technology' => 104,
      'cosinuss' => 105,
+     'fitcare' => 106,
+     'magene' => 107,
+     'giant_manufacturing_co' => 108,
+     'tigrasport' => 109,
      'development' => 255,
      'healthandlife' => 257,
      'lezyne' => 258,
@@ -1839,6 +1883,8 @@ else {
      'spivi' => 271,
      'mio_magellan' => 272,
      'evesports' => 273,
+     'sensitivus_gauge' => 274,
+     'podoon' => 275,
      'actigraphcorp' => 5759,
    },
 
@@ -1973,12 +2019,16 @@ else {
      'varia_remote' => 2276,
      'hrm4_run' => 2327,
      'vivo_active_hr' => 2337,
+     'vivo_smart_gps_hr' => 2347,
      'vivo_smart_hr' => 2348,
+     'vivo_move' => 2368,
      'varia_vision' => 2398,
      'vivo_fit3' => 2406,
      'fenix3_hr' => 2413,
      'index_smart_scale' => 2429,
      'fr235' => 2431,
+     'oregon7xx' => 2441,
+     'rino7xx' => 2444,
      'nautix' => 2496,
      'edge_820' => 2530,
      'edge_explore_820' => 2531,
@@ -2135,30 +2185,31 @@ else {
      'fitness_equipment' => 4,
      'swimming' => 5,
      'walking' => 6,
+     'sedentary' => 8,
      'all' => 254,
    },
 
    'activity_subtype' => +{
      '_base_type' => FIT_ENUM,
      'generic' => 0,
-     'treadmill' => 1,
-     'street' => 2,
-     'trail' => 3,
-     'track' => 4,
-     'spin' => 5,
-     'indoor_cycling' => 6,
-     'road' => 7,
-     'mountain' => 8,
-     'downhill' => 9,
-     'recumbent' => 10,
-     'cyclocross' => 11,
-     'hand_cycling' => 12,
-     'track_cycling' => 13,
-     'indoor_rowing' => 14,
-     'elliptical' => 15,
-     'stair_climbing' => 16,
-     'lap_swimming' => 17,
-     'open_water' => 18,
+     'treadmill' => 1, # run
+     'street' => 2, # run
+     'trail' => 3, # run
+     'track' => 4, # run
+     'spin' => 5, # cycling
+     'indoor_cycling' => 6, # cycling
+     'road' => 7, # cycling
+     'mountain' => 8, # cycling
+     'downhill' => 9, # cycling
+     'recumbent' => 10, # cycling
+     'cyclocross' => 11, # cycling
+     'hand_cycling' => 12, # cycling
+     'track_cycling' => 13, # cycling
+     'indoor_rowing' => 14, # fitness equipment
+     'elliptical' => 15, # fitness equipment
+     'stair_climbing' => 16, # fitness equipment
+     'lap_swimming' => 17, # swimming
+     'open_water' => 18, # swimming
      'all' => 254,
    },
 
@@ -2236,6 +2287,7 @@ else {
      'find_my_watch' => 0x08000000,
      'remote_manual_sync' => 0x10000000,
      'live_track_auto_start' => 0x20000000,
+     'live_track_messaging' => 0x40000000,
    },
 
    'weather_report' => +{
@@ -2369,6 +2421,14 @@ else {
      'special_weather' => 84,
    },
 
+   'time_into_day' => +{ # since 00:00:00 UTC
+     '_base_type' => FIT_UINT32,
+   },
+
+   'localtime_into_day' => +{ # same as above, but in local time zone
+     '_base_type' => FIT_UINT32,
+   },
+
    'stroke_type' => +{
      '_base_type' => FIT_ENUM,
      'no_event' => 0,
@@ -2474,6 +2534,27 @@ else {
      'landscape' => 2,
      'portrait_flipped' => 3,
      'landscape_flipped' => 4,
+   },
+
+   'watchface_mode' => +{
+     '_base_type' => FIT_ENUM,
+     'digital' => 0,
+     'analog' => 1,
+     'connect_iq' => 2,
+   },
+
+   'digital_watchface_layout' => +{
+     '_base_type' => FIT_ENUM,
+     'traditional' => 0,
+     'modern' => 1,
+     'bold' => 2,
+   },
+
+   'analog_watchface_layout' => +{
+     '_base_type' => FIT_ENUM,
+     'minimal' => 0,
+     'traditional' => 1,
+     'modern' => 2,
    },
 
    'rider_position_type' => +{
@@ -2678,6 +2759,8 @@ else {
      'third' => 29,
      'shifter' => 30,
      'last_sport' => 31,
+     'moving' => 32,
+     'stopped' => 33,
      'zone_9' => 242,
      'zone_8' => 243,
      'zone_7' => 244,
@@ -2776,6 +2859,17 @@ else {
      'gear_combo' => 82,
      'muscle_oxygen' => 83,
      'icon' => 84,
+     'compass_heading' => 85,
+     'gps_heading' => 86,
+     'gps_elevation' => 87,
+     'anaerobic_training_effect' => 88,
+     'course' => 89,
+     'off_course' => 90,
+     'glide_ratio' => 91,
+     'vertical_distance' => 92,
+     'vmg' => 93,
+     'ambient_pressure' => 94,
+     'pressure' => 95,
    },
 
    'auto_activity_detect' => +{
@@ -2875,13 +2969,6 @@ else {
      'other' => 0,
    },
 
-   'switch' => +{ # not present?
-     '_base_type' => FIT_ENUM,
-     'off' => 0,
-     'on' => 1,
-     'auto' => 2,
-   },
-
    );
 
 my ($typenam, $typdesc);
@@ -2956,14 +3043,14 @@ sub named_type_value {
       my $expr;
 
       foreach $expr (split /,/, $val) {
-	$expr =~ s/^.*=//;
+        $expr =~ s/^.*=//;
 
-	if ($expr =~ s/^0[xX]//) {
-	  $num |= hex($expr);
-	}
-	else {
-	  $num |= $expr + 0;
-	}
+        if ($expr =~ s/^0[xX]//) {
+          $num |= hex($expr);
+        }
+        else {
+          $num |= $expr + 0;
+        }
       }
 
       $num;
@@ -2973,22 +3060,22 @@ sub named_type_value {
       my (@key, $key);
 
       foreach $key (sort {$typedesc->{$b} <=> $typedesc->{$a}} grep {/^[A-Za-z]/} keys %$typedesc) {
-	push @key, $key . '=' . ($val & $typedesc->{$key});
-	$mask |= $typedesc->{$key};
+        push @key, $key . '=' . ($val & $typedesc->{$key});
+        $mask |= $typedesc->{$key};
       }
 
       my $rest = $val & ~$mask & ((1 << ($size[$typedesc->{_base_type}] * 8)) - 1);
 
       if ($rest) {
-	my $width = $size[$typedesc->{_base_type}] * 2;
+        my $width = $size[$typedesc->{_base_type}] * 2;
 
-	join(',', @key, sprintf("0x%0${width}X", $rest));
+        join(',', @key, sprintf("0x%0${width}X", $rest));
       }
       elsif (@key) {
-	join(',', @key);
+        join(',', @key);
       }
       else {
-	0;
+        0;
       }
     }
   }
@@ -3000,10 +3087,10 @@ sub named_type_value {
     }
     elsif ($val >= $typedesc->{_min} && $val != $invalid[$typedesc->{_base_type}]) {
       if ($self->numeric_date_time) {
-	$val - $typedesc->{_offset};
+        $val - $typedesc->{_offset};
       }
       else {
-	$self->date_string($val - $typedesc->{_offset});
+        $self->date_string($val - $typedesc->{_offset});
       }
     }
     else {
@@ -3027,10 +3114,10 @@ sub named_type_value {
        'name' => 'product',
 
        'switch' => +{
-	 '_by' => 'manufacturer',
-	 'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         '_by' => 'manufacturer',
+         'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
        },
      },
 
@@ -3047,7 +3134,7 @@ sub named_type_value {
    },
 
    'timestamp_correlation' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'fractional_timestamp', 'scale' => 32768, 'unit' => 's'},
      1 => +{'name' => 'system_timestamp', 'type_name' => 'date_time'},
      2 => +{'name' => 'fractional_system_timestamp', 'scale' => 32768, 'unit' => 's'},
@@ -3075,10 +3162,10 @@ sub named_type_value {
        'name' => 'product',
 
        'switch' => +{
-	 '_by' => 'manufacturer',
-	 'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         '_by' => 'manufacturer',
+         'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
        },
      },
    },
@@ -3112,10 +3199,10 @@ sub named_type_value {
        'name' => 'count',
 
        'switch' => +{
-	 '_by' => 'count_type',
-	 'num_per_file' => +{'name' => 'num_per_file'},
-	 'max_per_file' => +{'name' => 'max_per_file'},
-	 'max_per_file_type' => +{'name' => 'max_per_file_type'},
+         '_by' => 'count_type',
+         'num_per_file' => +{'name' => 'num_per_file'},
+         'max_per_file' => +{'name' => 'max_per_file'},
+         'max_per_file_type' => +{'name' => 'max_per_file_type'},
        },
      },
    },
@@ -3135,11 +3222,11 @@ sub named_type_value {
      1 => +{'name' => 'utc_offset'},
      2 => +{'name' => 'time_offset', 'unit' => 's'},
      3 => +{'name' => 'unknown3'}, # unknown ENUM
-     4 => +{'name' => 'unknown4'}, # unknown ENUM
+     4 => +{'name' => 'time_mode', 'type_name' => 'time_mode'},
      5 => +{'name' => 'time_zone_offset', 'scale' => 4, 'unit' => 'hr'},
      10 => +{'name' => 'unknown10'}, # unknown ENUM
      11 => +{'name' => 'unknown11'}, # unknown ENUM
-     12 => +{'name' => 'unknown12'}, # unknown ENUM
+     12 => +{'name' => 'backlight_mode', 'type_name' => 'backlight_mode'},
      13 => +{'name' => 'unknown13'}, # unknown UINT8
      14 => +{'name' => 'unknown14'}, # unknown UINT8
      15 => +{'name' => 'unknown15'}, # unknown UINT8
@@ -3151,8 +3238,10 @@ sub named_type_value {
      26 => +{'name' => 'unknown26'}, # unknown ENUM
      27 => +{'name' => 'unknown27'}, # unknown ENUM
      29 => +{'name' => 'unknown29'}, # unknown ENUM
+     33 => +{'name' => 'unknown33'}, # unknown UNIT8
      36 => +{'name' => 'activity_tracker_enabled', 'type_name' => 'bool'},
      38 => +{'name' => 'unknown38'}, # unknown ENUM
+     39 => +{'name' => 'clock_time', 'type_name' => 'date_time'},
      40 => +{'name' => 'pages_enabled'},
      41 => +{'name' => 'unknown41'}, # unknown ENUM
      46 => +{'name' => 'move_alert_enabled', 'type_name' => 'bool'},
@@ -3167,10 +3256,17 @@ sub named_type_value {
      57 => +{'name' => 'default_page'},
      58 => +{'name' => 'autosync_min_steps', 'unit' => 'steps'},
      59 => +{'name' => 'autosync_min_time', 'unit' => 'minutes'},
+     75 => +{'name' => 'unknown75'}, # unknown ENUM
+     80 => +{'name' => 'lactate_threshold_autodetect_enabled', 'type_name' => 'bool'},
      85 => +{'name' => 'unknown85'}, # unknown ENUM
+     86 => +{'name' => 'ble_auto_upload_enabled', 'type_name' => 'bool'},
      89 => +{'name' => 'auto_sync_frequency', 'type_name' => 'auto_sync_frequency'},
+     90 => +{'name' => 'auto_activity_detect', 'type_name' => 'auto_activity_detect'},
      94 => +{'name' => 'number_of_screens'},
      95 => +{'name' => 'smart_notification_display_orientation', 'type_name' => 'display_orientation'},
+     97 => +{'name' => 'unknown97'}, # unknown UINT8Z
+     98 => +{'name' => 'unknown98'}, # unknown ENUM
+     103 => +{'name' => 'unknown103'}, # unknown ENUM
    },
 
    'user_profile' => +{
@@ -3197,11 +3293,11 @@ sub named_type_value {
      22 => +{'name' => 'local_id', 'type_name' => 'user_local_id'},
      23 => +{'name' => 'global_id'},
      24 => +{'name' => 'unknown24'}, # unknown UINT8
-     28 => +{'name' => 'unknown28'}, # unknown UINT32
-     29 => +{'name' => 'unknown29'}, # unknown UINT32
+     28 => +{'name' => 'wake_time', 'type_name' => 'localtime_into_day'},
+     29 => +{'name' => 'sleep_time', 'type_name' => 'localtime_into_day'},
      30 => +{'name' => 'height_setting', 'type_name' => 'display_measure'},
-     31 => +{'name' => 'unknown31'}, # unknown UINT16
-     32 => +{'name' => 'unknown32'}, # unknown UINT16
+     31 => +{'name' => 'user_running_step_length', scale => 1000, 'unit' => 'm'},
+     32 => +{'name' => 'user_walking_step_length', scale => 1000, 'unit' => 'm'},
      33 => +{'name' => 'unknown33'}, # unknown UINT16
      34 => +{'name' => 'unknown34'}, # unknown UINT16
      35 => +{'name' => 'unknown35'}, # unknown UINT32
@@ -3213,19 +3309,19 @@ sub named_type_value {
 
    'hrm_profile' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
-     0 => +{'name' => 'enabled'},
+     0 => +{'name' => 'enabled', 'type_name' => 'bool'},
      1 => +{'name' => 'hrm_ant_id'},
-     2 => +{'name' => 'log_hrv'},
+     2 => +{'name' => 'log_hrv', 'type_name' => 'bool'},
      3 => +{'name' => 'hrm_ant_id_trans_type'},
    },
 
    'sdm_profile' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
-     0 => +{'name' => 'enabled'},
+     0 => +{'name' => 'enabled', 'type_name' => 'bool'},
      1 => +{'name' => 'sdm_ant_id'},
      2 => +{'name' => 'sdm_cal_factor', 'scale' => 10, 'unit' => '%'},
      3 => +{'name' => 'odometer', 'scale' => 100, 'unit' => 'm'},
-     4 => +{'name' => 'speed_source'},
+     4 => +{'name' => 'speed_source', 'type_name' => 'bool'},
      5 => +{'name' => 'sdm_ant_id_trans_type'},
      7 => +{'name' => 'odometer_rollover'},
    },
@@ -3244,15 +3340,15 @@ sub named_type_value {
      9 => +{'name' => 'auto_wheelsize', 'scale' => 1000, 'unit' => 'm'},
      10 => +{'name' => 'bike_weight', 'scale' => 10, 'unit' => 'kg'},
      11 => +{'name' => 'power_cal_factor', 'scale' => 10, 'unit' => '%'},
-     12 => +{'name' => 'auto_wheel_cal'},
-     13 => +{'name' => 'auto_power_zero'},
+     12 => +{'name' => 'auto_wheel_cal', 'type_name' => 'bool'},
+     13 => +{'name' => 'auto_power_zero', 'type_name' => 'bool'},
      14 => +{'name' => 'id'},
-     15 => +{'name' => 'spd_enabled'},
-     16 => +{'name' => 'cad_enabled'},
-     17 => +{'name' => 'spdcad_enabled'},
-     18 => +{'name' => 'power_enabled'},
+     15 => +{'name' => 'spd_enabled', 'type_name' => 'bool'},
+     16 => +{'name' => 'cad_enabled', 'type_name' => 'bool'},
+     17 => +{'name' => 'spdcad_enabled', 'type_name' => 'bool'},
+     18 => +{'name' => 'power_enabled', 'type_name' => 'bool'},
      19 => +{'name' => 'crank_length', 'scale' => 2, 'offset' => -110, 'unit' => 'mm'},
-     20 => +{'name' => 'enabled'},
+     20 => +{'name' => 'enabled', 'type_name' => 'bool'},
      21 => +{'name' => 'bike_spd_ant_id_trans_type'},
      22 => +{'name' => 'bike_cad_ant_id_trans_type'},
      23 => +{'name' => 'bike_spdcad_ant_id_trans_type'},
@@ -3283,6 +3379,25 @@ sub named_type_value {
      12 => +{'name' => 'grouptrack_enabled', 'type_name' => 'bool'},
    },
 
+   'watchface_settings' => +{
+     254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
+     0 => +{'name' => 'mode', 'type_name' => 'watchface_mode'},
+
+     1 => +{
+       'name' => 'layout',
+
+       'switch' => +{
+         '_by' => 'mode',
+         'digital' => +{'name' => 'digital_layout', 'type_name' => 'digital_watchface_layout'},
+         'analog' => +{'name' => 'analog_layout', 'type_name' => 'analog_watchface_layout'},
+       },
+     },
+   },
+
+   'ohr_settings' => +{
+     0 => +{'name' => 'enabled', 'type_name' => 'switch'},
+   },
+
    # =================== Sport settings file messages ===================
    'zones_target' => +{
      1 => +{'name' => 'max_heart_rate', 'unit' => 'bpm'},
@@ -3293,6 +3408,8 @@ sub named_type_value {
      8 => +{'name' => 'unknown8'}, # unknown UINT16
      9 => +{'name' => 'unknown9'}, # unknown ENUM
      10 => +{'name' => 'unknown10'}, # unknown ENUM
+     11 => +{'name' => 'unknown11'}, # unknown ENUM
+     12 => +{'name' => 'unknown12'}, # unknown ENUM
      13 => +{'name' => 'unknown13'}, # unknown ENUM
    },
 
@@ -3355,6 +3472,7 @@ sub named_type_value {
      8 => +{'name' => 'recurrence', 'type_name' => 'goal_recurrence'},
      9 => +{'name' => 'recurrence_value'},
      10 => +{'name' => 'enabled', 'type_name' => 'bool'},
+     11 => +{'name' => 'source', 'type_name' => 'goal_source'},
    },
 
    # =================== Activity file messages ===================
@@ -3371,7 +3489,7 @@ sub named_type_value {
 
    'session' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'event', 'type_name' => 'event'},
      1 => +{'name' => 'event_type', 'type_name' => 'event_type'},
      2 => +{'name' => 'start_time', 'type_name' => 'date_time'},
@@ -3387,10 +3505,10 @@ sub named_type_value {
        'name' => 'total_cycles', 'unit' => 'cycles',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'total_steps', 'unit' => 'steps'},
-	 'running' => +{'name' => 'total_strides', 'unit' => 'strides'},
-	 'swimming' => +{'name' => 'total_strokes', 'unit' => 'strokes'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'total_steps', 'unit' => 'steps'},
+         'running' => +{'name' => 'total_strides', 'unit' => 'strides'},
+         'swimming' => +{'name' => 'total_strokes', 'unit' => 'strokes'},
        },
      },
 
@@ -3405,10 +3523,10 @@ sub named_type_value {
        'name' => 'avg_cadence', 'unit' => 'rpm',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'avg_walking_cadence', 'unit' => 'steps/min'},
-	 'running' => +{'name' => 'avg_running_cadence', 'unit' => 'strides/min'},
-	 'swimming' => +{'name' => 'avg_swimming_cadence', 'unit' => 'strokes/min'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'avg_walking_cadence', 'unit' => 'steps/min'},
+         'running' => +{'name' => 'avg_running_cadence', 'unit' => 'strides/min'},
+         'swimming' => +{'name' => 'avg_swimming_cadence', 'unit' => 'strokes/min'},
        },
      },
 
@@ -3416,10 +3534,10 @@ sub named_type_value {
        'name' => 'max_cadence', 'unit' => 'rpm',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'max_walking_cadence', 'unit' => 'steps/min'},
-	 'running' => +{'name' => 'max_running_cadence', 'unit' => 'strides/min'},
-	 'swimming' => +{'name' => 'max_swimming_cadence', 'unit' => 'strokes/min'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'max_walking_cadence', 'unit' => 'steps/min'},
+         'running' => +{'name' => 'max_running_cadence', 'unit' => 'strides/min'},
+         'swimming' => +{'name' => 'max_swimming_cadence', 'unit' => 'strokes/min'},
        },
      },
 
@@ -3526,11 +3644,12 @@ sub named_type_value {
      132 => +{'name' => 'avg_vertical_ratio', 'scale' => 100, 'unit' => '%'},
      133 => +{'name' => 'avg_stance_time_balance', 'scale' => 100, 'unit' => '%'},
      134 => +{'name' => 'avg_step_length', 'scale' => 10, 'unit' => 'mm'},
+     137 => +{'name' => 'total_anaerobic_training_effect', 'scale' => 10},
    },
 
    'lap' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'event', 'type_name' => 'event'},
      1 => +{'name' => 'event_type', 'type_name' => 'event_type'},
      2 => +{'name' => 'start_time', 'type_name' => 'date_time'},
@@ -3546,10 +3665,10 @@ sub named_type_value {
        'name' => 'total_cycles', 'unit' => 'cycles',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'total_steps', 'unit' => 'steps'},
-	 'running' => +{'name' => 'total_strides', 'unit' => 'strides'},
-	 'swimming' => +{'name' => 'total_strokes', 'unit' => 'strokes'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'total_steps', 'unit' => 'steps'},
+         'running' => +{'name' => 'total_strides', 'unit' => 'strides'},
+         'swimming' => +{'name' => 'total_strokes', 'unit' => 'strokes'},
        },
      },
 
@@ -3564,10 +3683,10 @@ sub named_type_value {
        'name' => 'avg_cadence', 'unit' => 'rpm',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'avg_walking_cadence', 'unit' => 'steps/min'},
-	 'running' => +{'name' => 'avg_running_cadence', 'unit' => 'strides/min'},
-	 'swimming' => +{'name' => 'avg_swimming_cadence', 'unit' => 'strokes/min'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'avg_walking_cadence', 'unit' => 'steps/min'},
+         'running' => +{'name' => 'avg_running_cadence', 'unit' => 'strides/min'},
+         'swimming' => +{'name' => 'avg_swimming_cadence', 'unit' => 'strokes/min'},
        },
      },
 
@@ -3575,10 +3694,10 @@ sub named_type_value {
        'name' => 'max_cadence', 'unit' => 'rpm',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'max_walking_cadence', 'unit' => 'steps/min'},
-	 'running' => +{'name' => 'max_running_cadence', 'unit' => 'strides/min'},
-	 'swimming' => +{'name' => 'max_swimming_cadence', 'unit' => 'strokes/min'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'max_walking_cadence', 'unit' => 'steps/min'},
+         'running' => +{'name' => 'max_running_cadence', 'unit' => 'strides/min'},
+         'swimming' => +{'name' => 'max_swimming_cadence', 'unit' => 'strokes/min'},
        },
      },
 
@@ -3698,7 +3817,7 @@ sub named_type_value {
    },
 
    'record' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'position_lat', 'unit' => 'semicircles'},
      1 => +{'name' => 'position_long', 'unit' => 'semicircles'},
      2 => +{'name' => 'altitude', 'scale' => 5, 'offset' => 500, 'unit' => 'm'},
@@ -3721,7 +3840,7 @@ sub named_type_value {
      30 => +{'name' => 'left_right_balance', 'type_name' => 'left_right_balance'},
      31 => +{'name' => 'gps_accuracy', 'unit' => 'm'},
      32 => +{'name' => 'vertical_speed', 'scale' => 1000, 'unit' => 'm/s'},
-     33 => +{'name' => 'calories', 'scale' => 1, 'unit' => 'kcal'},
+     33 => +{'name' => 'calories', 'unit' => 'kcal'},
      39 => +{'name' => 'vertical_oscillation', 'scale' => 10, 'unit' => 'mm'},
      40 => +{'name' => 'stance_time_percent', 'scale' => 100, 'unit' => '%'},
      41 => +{'name' => 'stance_time', 'scale' => 10, 'unit' => 'ms'},
@@ -3762,7 +3881,7 @@ sub named_type_value {
    },
 
    'event' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'event', 'type_name' => 'event'},
      1 => +{'name' => 'event_type', 'type_name' => 'event_type'},
      2 => +{'name' => 'data16'}, # no switch?
@@ -3771,28 +3890,28 @@ sub named_type_value {
        'name' => 'data',
 
        'switch' => +{
-	 '_by' => 'event',
-	 'timer' => +{'name' => 'timer_trigger', 'type_name' => 'timer_trigger'},
-	 'course_point' => +{'name' => 'course_point_index', 'type_name' => 'message_index'},
-	 'battery' => +{'name' => 'battery_level', 'scale' => 1000, 'unit' => 'V'},
-	 'virtual_partner_pace' => +{'name' => 'virtual_partner_speed', 'scale' => 1000, 'unit' => 'm/s'},
-	 'hr_high_alert' => +{'name' => 'hr_high_alert', 'unit' => 'bpm'},
-	 'hr_low_alert' => +{'name' => 'hr_low_alert', 'unit' => 'bpm'},
-	 'speed_high_alert' => +{'name' => 'speed_high_alert', 'scale' => 1000, 'unit' => 'm/s'},
-	 'speed_low_alert' => +{'name' => 'speed_low_alert', 'scale' => 1000, 'unit' => 'm/s'},
-	 'cad_high_alert' => +{'name' => 'cad_high_alert', 'unit' => 'rpm'},
-	 'cad_low_alert' => +{'name' => 'cad_low_alert', 'unit' => 'rpm'},
-	 'power_high_alert' => +{'name' => 'power_high_alert', 'unit' => 'watts'},
-	 'power_low_alert' => +{'name' => 'power_low_alert', 'unit' => 'watts'},
-	 'time_duration_alert' => +{'name' => 'time_duration_alert', 'scale' => 1000, 'unit' => 's'},
-	 'distance_duration_alert' => +{'name' => 'distance_duration_alert', 'scale' => 100, 'unit' => 'm'},
-	 'calorie_duration_alert' => +{'name' => 'calorie_duration_alert', 'unit' => 'calories'},
-	 'fitness_equipment' => +{'name' => 'fitness_equipment_state', 'type_name' => 'fitness_equipment_state'},
-	 'sport_point' => +{'name' => 'sport_point'},
-	 'front_gear_change' => +{'name' => 'gear_change_data'},
-	 'rear_gear_change' => +{'name' => 'gear_change_data'},
-	 'rider_position_change' => +{'name' => 'rider_position', 'type_name' => 'rider_position_type'},
-	 'comm_timeout' => +{'name' => 'comm_timeout', 'type_name' => 'comm_timeout_type'},
+         '_by' => 'event',
+         'timer' => +{'name' => 'timer_trigger', 'type_name' => 'timer_trigger'},
+         'course_point' => +{'name' => 'course_point_index', 'type_name' => 'message_index'},
+         'battery' => +{'name' => 'battery_level', 'scale' => 1000, 'unit' => 'V'},
+         'virtual_partner_pace' => +{'name' => 'virtual_partner_speed', 'scale' => 1000, 'unit' => 'm/s'},
+         'hr_high_alert' => +{'name' => 'hr_high_alert', 'unit' => 'bpm'},
+         'hr_low_alert' => +{'name' => 'hr_low_alert', 'unit' => 'bpm'},
+         'speed_high_alert' => +{'name' => 'speed_high_alert', 'scale' => 1000, 'unit' => 'm/s'},
+         'speed_low_alert' => +{'name' => 'speed_low_alert', 'scale' => 1000, 'unit' => 'm/s'},
+         'cad_high_alert' => +{'name' => 'cad_high_alert', 'unit' => 'rpm'},
+         'cad_low_alert' => +{'name' => 'cad_low_alert', 'unit' => 'rpm'},
+         'power_high_alert' => +{'name' => 'power_high_alert', 'unit' => 'watts'},
+         'power_low_alert' => +{'name' => 'power_low_alert', 'unit' => 'watts'},
+         'time_duration_alert' => +{'name' => 'time_duration_alert', 'scale' => 1000, 'unit' => 's'},
+         'distance_duration_alert' => +{'name' => 'distance_duration_alert', 'scale' => 100, 'unit' => 'm'},
+         'calorie_duration_alert' => +{'name' => 'calorie_duration_alert', 'unit' => 'kcal'},
+         'fitness_equipment' => +{'name' => 'fitness_equipment_state', 'type_name' => 'fitness_equipment_state'},
+         'sport_point' => +{'name' => 'sport_point', 'scale' => 11}, # complex decoding!
+         'front_gear_change' => +{'name' => 'gear_change_data', 'scale' => 1111}, # complex decoding!
+         'rear_gear_change' => +{'name' => 'gear_change_data', 'scale' => 1111}, # complex decoding!
+         'rider_position_change' => +{'name' => 'rider_position', 'type_name' => 'rider_position_type'},
+         'comm_timeout' => +{'name' => 'comm_timeout', 'type_name' => 'comm_timeout_type'},
        },
      },
 
@@ -3807,16 +3926,16 @@ sub named_type_value {
    },
 
    'device_info' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'device_index', 'type_name' => 'device_index'},
 
      1 => +{
        'name' => 'device_type',
 
        'switch' => +{
-	 '_by' => 'source_type',
-	 'antplus' => +{'name' => 'antplus_device_type', 'type_name' => 'antplus_device_type'},
-	 'ant' => +{'name' => 'ant_device_type'},
+         '_by' => 'source_type',
+         'antplus' => +{'name' => 'antplus_device_type', 'type_name' => 'antplus_device_type'},
+         'ant' => +{'name' => 'ant_device_type'},
        },
      },
 
@@ -3827,10 +3946,10 @@ sub named_type_value {
        'name' => 'product',
 
        'switch' => +{
-	 '_by' => 'manufacturer',
-	 'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         '_by' => 'manufacturer',
+         'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
        },
      },
 
@@ -3862,10 +3981,10 @@ sub named_type_value {
        'name' => 'product',
 
        'switch' => +{
-	 '_by' => 'manufacturer',
-	 'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         '_by' => 'manufacturer',
+         'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
        },
      },
 
@@ -3906,19 +4025,19 @@ sub named_type_value {
    },
 
    'gps_metadata' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'position_lat', 'unit' => 'semicircles'},
      2 => +{'name' => 'position_long', 'unit' => 'semicircles'},
      3 => +{'name' => 'enhanced_altitude', 'scale' => 5, 'offset' => 500, 'unit' => 'm'},
      4 => +{'name' => 'enhanced_speed', 'scale' => 1000, 'unit' => 'm/s'},
      5 => +{'name' => 'heading', 'scale' => 100, 'unit' => 'degrees'},
-     6 => +{'name' => 'utc_timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     6 => +{'name' => 'utc_timestamp', 'type_name' => 'date_time'},
      7 => +{'name' => 'velocity', 'scale' => 100, 'unit' => 'm/s'},
    },
 
    'camera_event' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'camera_event_type', 'type_name' => 'camera_event_type'},
      2 => +{'name' => 'camera_file_uuid'},
@@ -3926,7 +4045,7 @@ sub named_type_value {
    },
 
    'gyroscope_data' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'sample_time_offset', 'unit' => 'ms'},
      2 => +{'name' => 'gyro_x', 'unit' => 'counts'},
@@ -3938,7 +4057,7 @@ sub named_type_value {
    },
 
    'accelerometer_data' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'sample_time_offset', 'unit' => 'ms'},
      2 => +{'name' => 'accel_x', 'unit' => 'counts'},
@@ -3950,7 +4069,7 @@ sub named_type_value {
    },
 
    'magnetometer_data' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'sample_time_offset', 'unit' => 'ms'},
      2 => +{'name' => 'mag_x', 'unit' => 'counts'},
@@ -3962,16 +4081,16 @@ sub named_type_value {
    },
 
    'three_d_sensor_calibration' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'sensor_type', 'type_name' => 'sensor_type'},
 
      1 => +{
        'name' => 'calibration_factor',
 
        'switch' => +{
-	 '_by' => 'sensor_type',
-	 'accelerometer' => +{'name' => 'accel_cal_factor'},
-	 'gyroscope' => +{'name' => 'gyro_cal_factor'},
+         '_by' => 'sensor_type',
+         'accelerometer' => +{'name' => 'accel_cal_factor'},
+         'gyroscope' => +{'name' => 'gyro_cal_factor'},
        },
      },
 
@@ -3982,13 +4101,13 @@ sub named_type_value {
    },
 
    'video_frame' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'frame_number'},
    },
 
    'obdii_data' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'time_offset', 'unit' => 'ms'},
      2 => +{'name' => 'pid'},
@@ -4000,13 +4119,13 @@ sub named_type_value {
    },
 
    'nmea_sentence' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'sentence'},
    },
 
    'aviation_attitude' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timestamp_ms', 'unit' => 'ms'},
      1 => +{'name' => 'system_time', 'unit' => 'ms'},
      2 => +{'name' => 'pitch', 'scale' => 10430.38, 'unit' => 'radians'},
@@ -4053,6 +4172,7 @@ sub named_type_value {
      4 => +{'name' => 'sport', 'type_name' => 'sport'},
      5 => +{'name' => 'name'},
      6 => +{'name' => 'capabilities', 'type_name' => 'course_capabilities'},
+     7 => +{'name' => 'sub_sport', 'type_name' => 'sub_sport'},
    },
 
    'course_point' => +{
@@ -4063,7 +4183,7 @@ sub named_type_value {
      4 => +{'name' => 'distance', 'scale' => 100, 'unit' => 'm'},
      5 => +{'name' => 'type', 'type_name' => 'course_point'},
      6 => +{'name' => 'name'},
-     8 => +{'name' => 'favorite'},
+     8 => +{'name' => 'favorite', 'type_name' => 'bool'},
    },
 
    # =================== Segment file messages ===================
@@ -4071,7 +4191,7 @@ sub named_type_value {
      0 => +{'name' => 'name'},
      1 => +{'name' => 'uuid'},
      2 => +{'name' => 'sport', 'type_name' => 'sport'},
-     3 => +{'name' => 'enabled'},
+     3 => +{'name' => 'enabled', 'type_name' => 'bool'},
      4 => +{'name' => 'user_profile_primary_key'},
      5 => +{'name' => 'device_id'},
      6 => +{'name' => 'default_race_leader'},
@@ -4100,7 +4220,7 @@ sub named_type_value {
 
    'segment_lap' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'event', 'type_name' => 'event'},
      1 => +{'name' => 'event_type', 'type_name' => 'event_type'},
      2 => +{'name' => 'start_time', 'type_name' => 'date_time'},
@@ -4116,10 +4236,10 @@ sub named_type_value {
        'name' => 'total_cycles', 'unit' => 'cycles',
 
        'switch' => +{
-	 '_by' => 'sport',
-	 'walking' => +{'name' => 'total_steps', 'unit' => 'steps'},
-	 'running' => +{'name' => 'total_strides', 'unit' => 'strides'},
-	 'swimming' => +{'name' => 'total_strokes', 'unit' => 'strokes'},
+         '_by' => 'sport',
+         'walking' => +{'name' => 'total_steps', 'unit' => 'steps'},
+         'running' => +{'name' => 'total_strides', 'unit' => 'strides'},
+         'swimming' => +{'name' => 'total_strokes', 'unit' => 'strokes'},
        },
      },
 
@@ -4195,13 +4315,14 @@ sub named_type_value {
      80 => +{'name' => 'max_power_position', 'unit' => 'watts'},
      81 => +{'name' => 'avg_cadence_position', 'unit' => 'rpm'},
      82 => +{'name' => 'max_cadence_position', 'unit' => 'rpm'},
+     83 => +{'name' => 'manufacturer', 'type_name' => 'manufacturer'},
    },
 
    # =================== Segment list file messages ===================
    'segment_file' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
      1 => +{'name' => 'file_uuid'},
-     3 => +{'name' => 'enabled'},
+     3 => +{'name' => 'enabled', 'type_name' => 'bool'},
      4 => +{'name' => 'user_profile_primary_key'},
      7 => +{'name' => 'leader_type', 'type_name' => 'segment_leaderboard_type'},
      8 => +{'name' => 'leader_group_primary_key'},
@@ -4215,7 +4336,7 @@ sub named_type_value {
      4 => +{'name' => 'sport', 'type_name' => 'sport'},
      5 => +{'name' => 'capabilities', 'type_name' => 'workout_capabilities'},
      6 => +{'name' => 'num_valid_steps'},
-     7 => +{'name' => 'protection'},
+     7 => +{'name' => 'protection'}, # not present?
      8 => +{'name' => 'wkt_name'},
    },
 
@@ -4228,23 +4349,23 @@ sub named_type_value {
        'name' => 'duration_value',
 
        'switch' => +{
-	 '_by' => 'duration_type',
-	 'time' => +{'name' => 'duration_time', 'scale' => 1000, 'unit' => 's'},
-	 'repetition_time' => +{'name' => 'duration_time', 'scale' => 1000, 'unit' => 's'},
-	 'distance' => +{'name' => 'duration_distance', 'scale' => 100, 'unit' => 'm'},
-	 'hr_less_than' => +{'name' => 'duration_hr', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
-	 'hr_greater_than' => +{'name' => 'duration_hr', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
-	 'calories' => +{'name' => 'duration_calories', 'unit' => 'kcal'},
-	 'repeat_until_steps_cmplt' => +{'name' => 'duration_step'},
-	 'repeat_until_time' => +{'name' => 'duration_step'},
-	 'repeat_until_distance' => +{'name' => 'duration_step'},
-	 'repeat_until_calories' => +{'name' => 'duration_step'},
-	 'repeat_until_hr_less_than' => +{'name' => 'duration_step'},
-	 'repeat_until_hr_greater_than' => +{'name' => 'duration_step'},
-	 'repeat_until_power_less_than' => +{'name' => 'duration_step'},
-	 'repeat_until_power_greater_than' => +{'name' => 'duration_step'},
-	 'power_less_than' => +{'name' => 'duration_power', 'unit' => 'watts'},
-	 'power_greater_than' => +{'name' => 'duration_power', 'unit' => 'watts'},
+         '_by' => 'duration_type',
+         'time' => +{'name' => 'duration_time', 'scale' => 1000, 'unit' => 's'},
+         'repetition_time' => +{'name' => 'duration_time', 'scale' => 1000, 'unit' => 's'},
+         'distance' => +{'name' => 'duration_distance', 'scale' => 100, 'unit' => 'm'},
+         'hr_less_than' => +{'name' => 'duration_hr', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
+         'hr_greater_than' => +{'name' => 'duration_hr', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
+         'calories' => +{'name' => 'duration_calories', 'unit' => 'kcal'},
+         'repeat_until_steps_cmplt' => +{'name' => 'duration_step'},
+         'repeat_until_time' => +{'name' => 'duration_step'},
+         'repeat_until_distance' => +{'name' => 'duration_step'},
+         'repeat_until_calories' => +{'name' => 'duration_step'},
+         'repeat_until_hr_less_than' => +{'name' => 'duration_step'},
+         'repeat_until_hr_greater_than' => +{'name' => 'duration_step'},
+         'repeat_until_power_less_than' => +{'name' => 'duration_step'},
+         'repeat_until_power_greater_than' => +{'name' => 'duration_step'},
+         'power_less_than' => +{'name' => 'duration_power', 'type_name' => 'workout_power', 'unit' => 'watts'},
+         'power_greater_than' => +{'name' => 'duration_power', 'type_name' => 'workout_power', 'unit' => 'watts'},
        },
      },
 
@@ -4254,19 +4375,19 @@ sub named_type_value {
        'name' => 'target_value',
 
        'switch' => +{
-	 '_by' => [qw(target_type duration_type)],
- 	 'speed' => +{'name' => 'target_speed_zone'}, # not present?
-	 'heart_rate' => +{'name' => 'target_hr_zone'},
- 	 'cadence' => +{'name' => 'target_cadence_zone'}, # not present?
-	 'power' => +{'name' => 'target_power_zone'},
-	 'repeat_until_steps_cmplt' => +{'name' => 'repeat_steps'},
-	 'repeat_until_time' => +{'name' => 'repeat_time', 'scale' => 1000, 'unit' => 's'},
-	 'repeat_until_distance' => +{'name' => 'repeat_distance', 'scale' => 100, 'unit' => 'm'},
-	 'repeat_until_calories' => +{'name' => 'repeat_calories', 'unit' => 'kcal'},
-	 'repeat_until_hr_less_than' => +{'name' => 'repeat_hr', 'unit' => 'bpm'},
-	 'repeat_until_hr_greater_than' => +{'name' => 'repeat_hr', 'unit' => 'bpm'},
-	 'repeat_until_power_less_than' => +{'name' => 'repeat_power', 'unit' => 'watts'},
-	 'repeat_until_power_greater_than' => +{'name' => 'repeat_power', 'unit' => 'watts'},
+         '_by' => [qw(target_type duration_type)],
+         'speed' => +{'name' => 'target_speed_zone'}, # not present?
+         'heart_rate' => +{'name' => 'target_hr_zone'},
+         'cadence' => +{'name' => 'target_cadence_zone'}, # not present?
+         'power' => +{'name' => 'target_power_zone'},
+         'repeat_until_steps_cmplt' => +{'name' => 'repeat_steps'},
+         'repeat_until_time' => +{'name' => 'repeat_time', 'scale' => 1000, 'unit' => 's'},
+         'repeat_until_distance' => +{'name' => 'repeat_distance', 'scale' => 100, 'unit' => 'm'},
+         'repeat_until_calories' => +{'name' => 'repeat_calories', 'unit' => 'kcal'},
+         'repeat_until_hr_less_than' => +{'name' => 'repeat_hr', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
+         'repeat_until_hr_greater_than' => +{'name' => 'repeat_hr', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
+         'repeat_until_power_less_than' => +{'name' => 'repeat_power', 'type_name' => 'workout_power', 'unit' => 'watts'},
+         'repeat_until_power_greater_than' => +{'name' => 'repeat_power', 'type_name' => 'workout_power', 'unit' => 'watts'},
        },
      },
 
@@ -4274,11 +4395,11 @@ sub named_type_value {
        'name' => 'custom_target_value_low',
 
        'switch' => +{
-	 '_by' => 'target_type',
-	 'speed' => +{'name' => 'custom_target_speed_low', 'scale' => 1000, 'unit' => 'm/s'},
-	 'heart_rate' => +{'name' => 'custom_target_heart_rate_low', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
-	 'cadence' => +{'name' => 'custom_target_cadence_low', 'unit' => 'rpm'},
-	 'power' => +{'name' => 'custom_target_power_low', 'type_name' => 'workout_power', 'unit' => 'watts'},
+         '_by' => 'target_type',
+         'speed' => +{'name' => 'custom_target_speed_low', 'scale' => 1000, 'unit' => 'm/s'},
+         'heart_rate' => +{'name' => 'custom_target_heart_rate_low', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
+         'cadence' => +{'name' => 'custom_target_cadence_low', 'unit' => 'rpm'},
+         'power' => +{'name' => 'custom_target_power_low', 'type_name' => 'workout_power', 'unit' => 'watts'},
        },
      },
 
@@ -4286,11 +4407,11 @@ sub named_type_value {
        'name' => 'custom_target_value_high',
 
        'switch' => +{
-	 '_by' => 'target_type',
-	 'speed' => +{'name' => 'custom_target_speed_high', 'scale' => 1000, 'unit' => 'm/s'},
-	 'heart_rate' => +{'name' => 'custom_target_heart_rate_high', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
-	 'cadence' => +{'name' => 'custom_target_cadence_high', 'unit' => 'rpm'},
-	 'power' => +{'name' => 'custom_target_power_high', 'type_name' => 'workout_power', 'unit' => 'watts'},
+         '_by' => 'target_type',
+         'speed' => +{'name' => 'custom_target_speed_high', 'scale' => 1000, 'unit' => 'm/s'},
+         'heart_rate' => +{'name' => 'custom_target_heart_rate_high', 'type_name' => 'workout_hr', 'unit' => 'bpm'},
+         'cadence' => +{'name' => 'custom_target_cadence_high', 'unit' => 'rpm'},
+         'power' => +{'name' => 'custom_target_power_high', 'type_name' => 'workout_power', 'unit' => 'watts'},
        },
      },
 
@@ -4305,16 +4426,16 @@ sub named_type_value {
        'name' => 'product',
 
        'switch' => +{
-	 '_by' => 'manufacturer',
-	 'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
-	 'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         '_by' => 'manufacturer',
+         'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
        },
      },
 
      2 => +{'name' => 'serial_number'},
      3 => +{'name' => 'time_created', 'type_name' => 'date_time'},
-     4 => +{'name' => 'completed'},
+     4 => +{'name' => 'completed', 'type_name' => 'bool'},
      5 => +{'name' => 'type', 'type_name' => 'schedule'},
      6 => +{'name' => 'schedule_time', 'type_name' => 'local_date_time'},
    },
@@ -4322,7 +4443,7 @@ sub named_type_value {
    # =================== Totals file messages ===================
    'totals' => +{
      254 => +{'name' => 'message_index', 'type_name' => 'message_index'},
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'timer_time', 'unit' => 's'},
      1 => +{'name' => 'distance', 'unit' => 'm'},
      2 => +{'name' => 'calories', 'unit' => 'kcal'},
@@ -4336,7 +4457,7 @@ sub named_type_value {
 
    # =================== Weight scale file messages ===================
    'weight_scale' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'weight', 'type_name' => 'weight', 'scale' => 100, 'unit' => 'kg'},
      1 => +{'name' => 'percent_fat', 'scale' => 100, 'unit' => '%'},
      2 => +{'name' => 'percent_hydration', 'scale' => 100, 'unit' => '%'},
@@ -4353,7 +4474,7 @@ sub named_type_value {
 
    # =================== Blood pressure file messages ===================
    'blood_pressure' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'systolic_pressure', 'unit' => 'mmHg'},
      1 => +{'name' => 'diastolic_pressure', 'unit' => 'mmHg'},
      2 => +{'name' => 'mean_arterial_pressure', 'unit' => 'mmHg'},
@@ -4368,16 +4489,16 @@ sub named_type_value {
 
    # =================== Monitoring file messages ===================
    'monitoring_info' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'local_timestamp', 'type_name' => 'local_date_time'},
      1 => +{'name' => 'activity_type', 'type_name' => 'activity_type'},
      3 => +{'name' => 'cycles_to_distance', 'scale' => 5000, 'unit' => 'm/cycle'},
      4 => +{'name' => 'cycles_to_calories', 'scale' => 5000, 'unit' => 'kcal/cycle'},
-     5 => +{'name' => 'resting_metabolic_rate', 'unit' => 'kcal / day'},
+     5 => +{'name' => 'resting_metabolic_rate', 'unit' => 'kcal/day'},
    },
 
    'monitoring' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'device_index', 'type_name' => 'device_index'},
      1 => +{'name' => 'calories', 'unit' => 'kcal'},
      2 => +{'name' => 'distance', 'scale' => 100, 'unit' => 'm'},
@@ -4386,11 +4507,11 @@ sub named_type_value {
        'name' => 'cycles', 'scale' => 2, 'unit' => 'cycles',
 
        'switch' => +{
-	 '_by' => 'activity_type',
-	 'walking' => +{'name' => 'total_steps', 'scale' => 1, 'unit' => 'steps'},
-	 'running' => +{'name' => 'total_strides', 'scale' => 1, 'unit' => 'strides'},
-	 'cycling' => +{'name' => 'total_strokes', 'scale' => 2, 'unit' => 'strokes'},
-	 'swimming' => +{'name' => 'total_strokes', 'scale' => 2, 'unit' => 'strokes'},
+         '_by' => 'activity_type',
+         'walking' => +{'name' => 'total_steps', 'scale' => 1, 'unit' => 'steps'},
+         'running' => +{'name' => 'total_strides', 'scale' => 1, 'unit' => 'strides'},
+         'cycling' => +{'name' => 'total_strokes', 'scale' => 2, 'unit' => 'strokes'},
+         'swimming' => +{'name' => 'total_strokes', 'scale' => 2, 'unit' => 'strokes'},
        },
      },
 
@@ -4407,7 +4528,7 @@ sub named_type_value {
      15 => +{'name' => 'temperature_max', 'scale' => 100, 'unit' => 'deg.C'},
      16 => +{'name' => 'activity_time', 'unit' => 'min'},
      19 => +{'name' => 'active_calories', 'unit' => 'kcal'},
-     24 => +{'name' => 'current_activity_type_intensity'},
+     24 => +{'name' => 'current_activity_type_intensity'}, # complex decoding!
      25 => +{'name' => 'timestamp_min_8', 'unit' => 'min'},
      26 => +{'name' => 'timestamp_16', 'unit' => 's'},
      27 => +{'name' => 'heart_rate', 'unit' => 'bpm'},
@@ -4446,7 +4567,7 @@ sub named_type_value {
    },
 
    'ant_rx' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'fractional_timestamp', 'scale' => 32768, 'unit' => 's'},
      1 => +{'name' => 'mesg_id'},
      2 => +{'name' => 'mesg_data'},
@@ -4455,7 +4576,7 @@ sub named_type_value {
    },
 
    'ant_tx' => +{
-     253 => +{'name' => 'timestamp', 'type_name' => 'date_time', 'unit' => 's'},
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
      0 => +{'name' => 'fractional_timestamp', 'scale' => 32768, 'unit' => 's'},
      1 => +{'name' => 'mesg_id'},
      2 => +{'name' => 'mesg_data'},
@@ -4467,12 +4588,12 @@ sub named_type_value {
      0 => +{'name' => 'screen_index'},
      1 => +{'name' => 'field_count'},
      2 => +{'name' => 'layout', 'type_name' => 'exd_layout'},
-     3 => +{'name' => 'screen_enabled'},
+     3 => +{'name' => 'screen_enabled', 'type_name' => 'bool'},
    },
 
    'exd_data_field_configuration' => +{
      0 => +{'name' => 'screen_index'},
-     1 => +{'name' => 'concept_field'},
+     1 => +{'name' => 'concept_field'}, # complex decoding!
      2 => +{'name' => 'field_id'},
      3 => +{'name' => 'concept_count'},
      4 => +{'name' => 'display_type', 'type_name' => 'exd_display_type'},
@@ -4481,7 +4602,7 @@ sub named_type_value {
 
    'exd_data_concept_configuration' => +{
      0 => +{'name' => 'screen_index'},
-     1 => +{'name' => 'concept_field'},
+     1 => +{'name' => 'concept_field'}, # complex decoding!
      2 => +{'name' => 'field_id'},
      3 => +{'name' => 'concept_index'},
      4 => +{'name' => 'data_page'},
@@ -4491,7 +4612,7 @@ sub named_type_value {
      8 => +{'name' => 'data_units', 'type_name' => 'exd_data_units'},
      9 => +{'name' => 'qualifier', 'type_name' => 'exd_qualifiers'},
      10 => +{'name' => 'descriptor', 'type_name' => 'exd_descriptors'},
-     11 => +{'name' => 'is_signed'},
+     11 => +{'name' => 'is_signed', 'type_name' => 'bool'},
    },
 
    'field_description' => +{
@@ -4633,6 +4754,7 @@ $mesg_name_vs_num = $named_type{mesg_num};
      17 => +{'name' => 'unknown17'}, # unknown ENUM
      18 => +{'name' => 'unknown18'}, # unknown ENUM
      19 => +{'name' => 'unknown19'}, # unknown UINT16
+     25 => +{'name' => 'unknown25'}, # unknown ENUM
      27 => +{'name' => 'unknown27'}, # unknown ENUM
      30 => +{'name' => 'unknown30'}, # unknown ENUM
      31 => +{'name' => 'unknown31'}, # unknown UINT32
@@ -4640,6 +4762,8 @@ $mesg_name_vs_num = $named_type{mesg_num};
      33 => +{'name' => 'unknown33'}, # unknown UINT32
      34 => +{'name' => 'unknown34'}, # unknown ENUM
      50 => +{'name' => 'unknown50'}, # unknown ENUM
+     51 => +{'name' => 'unknown51'}, # unknown ENUM
+     52 => +{'name' => 'unknown52'}, # unknown UINT16
    },
 
    14 => +{
@@ -4890,19 +5014,19 @@ sub data_message_callback_by_num {
   if ($num == $msgnum_anon) {
     if (@_) {
       if (ref $_[0] eq 'CODE') {
-	$cbmap->{$msgname_anon} = $cbmap->{$msgnum_anon} = [@_];
+        $cbmap->{$msgname_anon} = $cbmap->{$msgnum_anon} = [@_];
       }
       else {
-	$self->error('not a CODE');
+        $self->error('not a CODE');
       }
     }
     else {
       my %res;
 
       foreach $num (keys %msgtype_by_num) {
-	my $cb = $cbmap->{$num};
+        my $cb = $cbmap->{$num};
 
-	ref $cb eq 'ARRAY' and $res{$num} = [@$cb];
+        ref $cb eq 'ARRAY' and $res{$num} = [@$cb];
       }
 
       \%res;
@@ -4937,19 +5061,19 @@ sub data_message_callback_by_name {
   if ($name eq $msgname_anon) {
     if (@_) {
       if (ref $_[0] eq 'CODE') {
-	$cbmap->{$msgname_anon} = $cbmap->{$msgnum_anon} = [@_];
+        $cbmap->{$msgname_anon} = $cbmap->{$msgnum_anon} = [@_];
       }
       else {
-	$self->error('not a CODE');
+        $self->error('not a CODE');
       }
     }
     else {
       my %res;
 
       foreach $name (keys %msgtype_by_name) {
-	my $cb = $cbmap->{$name};
+        my $cb = $cbmap->{$name};
 
-	ref $cb eq 'ARRAY' and $res{$name} = [@$cb];
+        ref $cb eq 'ARRAY' and $res{$name} = [@$cb];
       }
 
       \%res;
@@ -5029,8 +5153,8 @@ sub syscallback_devdata_field_desc {
       $i_base_type_id, $T_base_type_id, $I_base_type_id,
       $i_field_name, $T_field_name, $c_field_name)
     = @$desc{qw(i_developer_data_index I_developer_data_index i_field_definition_number I_field_definition_number
-		i_fit_base_type_id T_fit_base_type_id I_fit_base_type_id
-		i_field_name T_field_name c_field_name)};
+                i_fit_base_type_id T_fit_base_type_id I_fit_base_type_id
+                i_field_name T_field_name c_field_name)};
 
   my $emsg;
 
@@ -5148,10 +5272,10 @@ sub syscallback_devdata_field_desc {
       my $c_aname = 'c_' . $aname;
 
       if ($desc->{$T_aname} == FIT_STRING) {
-	$fdesc{$aname} = $self->string_value($v, $i, $desc->{$c_aname});
+        $fdesc{$aname} = $self->string_value($v, $i, $desc->{$c_aname});
       }
       elsif ($v->[$i] != $desc->{$I_aname}) {
-	$fdesc{$aname} = $v->[$i];
+        $fdesc{$aname} = $v->[$i];
       }
     }
   }
@@ -5225,10 +5349,10 @@ sub fetch_definition_message {
       my $fldtype = $msgtype->{$index};
 
       if (ref $fldtype eq 'HASH') {
-	%attr = %$fldtype;
-	($name, $tname) = @attr{qw(name type_name)};
-	delete $attr{name};
-	delete $attr{type_name};
+        %attr = %$fldtype;
+        ($name, $tname) = @attr{qw(name type_name)};
+        delete $attr{name};
+        delete $attr{type_name};
       }
     }
 
@@ -5288,26 +5412,26 @@ sub fetch_definition_message {
       my ($fdesc, $name, $type, %attr);
 
       if (ref $devdata eq 'HASH') {
-	my $fdesc_by_num = $devdata->{field_desc_by_num};
+        my $fdesc_by_num = $devdata->{field_desc_by_num};
 
-	if (ref $fdesc_by_num eq 'HASH') {
-	  $fdesc = $fdesc_by_num->{$fnum};
-	}
-	else {
-	  push @emsg, "No field description message for developer data with index $index";
-	}
+        if (ref $fdesc_by_num eq 'HASH') {
+          $fdesc = $fdesc_by_num->{$fnum};
+        }
+        else {
+          push @emsg, "No field description message for developer data with index $index";
+        }
       }
       else {
-	push @emsg, "No developer data id with index $index";
+        push @emsg, "No developer data id with index $index";
       }
 
       if (ref $fdesc eq 'HASH') {
-	%attr = %$fdesc;
-	($type, $name) = @attr{qw(_type _name)};
+        %attr = %$fdesc;
+        ($type, $name) = @attr{qw(_type _name)};
       }
       else {
-	push @emsg, "No field with number $fnum for developer data with index $index";
-	$type = FIT_UINT8;
+        push @emsg, "No field with number $fnum for developer data with index $index";
+        $type = FIT_UINT8;
       }
 
       $name = $self->undocumented_field_name($fnum, $size, $type, $i_string) if !defined $name;
@@ -5331,8 +5455,8 @@ sub fetch_definition_message {
       $desc{template} .= ' ' . $template[$type];
 
       if ($packfactor[$type] > 1) {
-	push @pi, $type, $i_array_t, $c, $i_array;
-	$c *= $packfactor[$type];
+        push @pi, $type, $i_array_t, $c, $i_array;
+        $c *= $packfactor[$type];
       }
 
       $desc{template} .= $c if $c > 1;
@@ -5407,7 +5531,7 @@ sub endian_convert {
       my ($k, $l);
 
       for ($k = 0, $l = $#v ; $k < $l ; ++$k, --$l) {
-	@v[$k, $l] = @v[$l, $k];
+        @v[$k, $l] = @v[$l, $k];
       }
 
       substr($$buffer, $b, $size) = pack($cvt->[$j - 4], @v);
@@ -5452,7 +5576,7 @@ sub fetch_data_message {
       $i = $i_array_t + $c * $delta;
 
       for (; $i_array_t < $i ; $i_array_t += $delta) {
-	push @v, $unpackfilter[$type]->(@v_t[$i_array_t .. ($i_array_t + $delta - 1)]);
+        push @v, $unpackfilter[$type]->(@v_t[$i_array_t .. ($i_array_t + $delta - 1)]);
       }
     }
   }
@@ -5485,7 +5609,7 @@ sub pack_data_message {
       $i = $i_array + $c;
 
       for (; $i_array < $i ; ++$i_array) {
-	push @v, $packfilter[$type]->($v->[$i_array]);
+        push @v, $packfilter[$type]->($v->[$i_array]);
       }
     }
 
@@ -5515,14 +5639,14 @@ sub switched {
       my $key_tn = $desc->{'t_' . $key};
 
       if (defined $key_tn) {
-	my $t_val = $self->named_type_value($key_tn, $val);
+        my $t_val = $self->named_type_value($key_tn, $val);
 
-	$val = $t_val if defined $t_val;
+        $val = $t_val if defined $t_val;
       }
 
       if (ref $sw->{$val} eq 'HASH') {
-	$attr = $sw->{$val};
-	last;
+        $attr = $sw->{$val};
+        last;
       }
     }
   }
@@ -5577,32 +5701,32 @@ sub value_processed {
       my $unit_tab = $self->unit_table($unit);
 
       if (ref $unit_tab eq 'HASH') {
-	my ($unit1, $offset1, $scale1) = @{$unit_tab}{qw(unit offset scale)};
+        my ($unit1, $offset1, $scale1) = @{$unit_tab}{qw(unit offset scale)};
 
-	if ($scale1 > 0) {
-	  $num /= $scale1;
-	  $scale += $scale1;
-	}
+        if ($scale1 > 0) {
+          $num /= $scale1;
+          $scale += $scale1;
+        }
 
-	$num -= $offset1 if $offset1;
-	$unit = $unit1 if $unit1 ne '';
+        $num -= $offset1 if $offset1;
+        $unit = $unit1 if $unit1 ne '';
       }
 
       if ($scale > 0) {
-	my $below_pt = int(log($scale + 9) / log(10));
+        my $below_pt = int(log($scale + 9) / log(10));
 
-	if ($self->without_unit) {
-	  sprintf("%.${below_pt}f", $num);
+        if ($self->without_unit) {
+          sprintf("%.${below_pt}f", $num);
         }
-	else {
-	  sprintf("%.${below_pt}f %s", $num, $unit);
+        else {
+          sprintf("%.${below_pt}f %s", $num, $unit);
         }
       }
       elsif ($self->without_unit) {
-	$num;
+        $num;
       }
       else {
-	$num . " " . $unit;
+        $num . " " . $unit;
       }
     }
     elsif ($scale > 0) {
@@ -5630,15 +5754,15 @@ sub value_unprocessed {
       my $unit_tab = $self->unit_table($unit);
 
       if (ref $unit_tab eq 'HASH') {
-	my ($unit1, $offset1, $scale1) = @{$unit_tab}{qw(unit offset scale)};
+        my ($unit1, $offset1, $scale1) = @{$unit_tab}{qw(unit offset scale)};
 
-	$scale += $scale1 if $scale1 > 0;
-	$offset += $offset1 if $offset1;
-	$unit = $unit1 if $unit1 ne '';
+        $scale += $scale1 if $scale1 > 0;
+        $offset += $offset1 if $offset1;
+        $unit = $unit1 if $unit1 ne '';
       }
 
       length($num) >= length($unit) && substr($num, -length($unit)) eq $unit
-	and substr($num, -length($unit)) = '';
+        and substr($num, -length($unit)) = '';
     }
 
     $num += $offset if $offset;
@@ -5741,7 +5865,7 @@ sub reset {
   $self->clear_buffer;
 
   %$self = map {($_ => $self->{$_})} qw(error buffer FH data_message_callback unit_table
-					verbose cp_fit cp_fit_FH EOF use_gmtime numeric_date_time without_unit maybe_chained);
+                                        verbose cp_fit cp_fit_FH EOF use_gmtime numeric_date_time without_unit maybe_chained);
 
   my $buffer = $self->buffer;
 
@@ -5767,10 +5891,10 @@ sub open {
 
     if ($FH->open("< $fn")) {
       if (binmode $FH, ':raw') {
-	1;
+        1;
       }
       else {
-	$self->error("binmode \$FH, ':raw': $!");
+        $self->error("binmode \$FH, ':raw': $!");
       }
     }
     else {
@@ -5812,10 +5936,10 @@ sub fetch {
       my $desc = $self->data_message_descriptor->[$desc_i];
 
       if (ref $desc eq 'HASH') {
-	$self->fetch_data_message($desc);
+        $self->fetch_data_message($desc);
       }
       else {
-	$self->error(sprintf("%d at %ld: not defined", $rechd, $j));
+        $self->error(sprintf("%d at %ld: not defined", $rechd, $j));
       }
     }
   }
@@ -5881,9 +6005,9 @@ sub print_all_fields {
       my $t_attr = $self->switched($desc, $v, $attr->{switch});
 
       if (ref $t_attr eq 'HASH') {
-	$attr = $t_attr;
-	$tname = $attr->{type_name};
-	$pname = $attr->{name};
+        $attr = $t_attr;
+        $tname = $attr->{type_name};
+        $pname = $attr->{name};
       }
     }
 
@@ -5906,29 +6030,29 @@ sub print_all_fields {
       $FH->print('): ');
 
       if ($type == FIT_STRING) {
-	$FH->print("\"", $self->string_value($v, $i, $c), "\"\n");
+        $FH->print("\"", $self->string_value($v, $i, $c), "\"\n");
       }
       else {
-	$FH->print('{') if $c > 1;
+        $FH->print('{') if $c > 1;
 
-	my $pval = $self->value_cooked($tname, $attr, $invalid, $v->[$i]);
+        my $pval = $self->value_cooked($tname, $attr, $invalid, $v->[$i]);
 
-	$FH->print($pval);
-	$FH->print(' (', $v->[$i], ')') if $v->[$i] ne $pval;
+        $FH->print($pval);
+        $FH->print(' (', $v->[$i], ')') if $v->[$i] ne $pval;
 
-	if ($c > 1) {
-	  my ($j, $k);
+        if ($c > 1) {
+          my ($j, $k);
 
-	  for ($j = $i + 1, $k = $i + $c ; $j < $k ; ++$j) {
-	    $pval = $self->value_cooked($tname, $attr, $invalid, $v->[$j]);
-	    $FH->print(', ', $pval);
-	    $FH->print(' (', $v->[$j], ')') if $v->[$j] ne $pval;
-	  }
+          for ($j = $i + 1, $k = $i + $c ; $j < $k ; ++$j) {
+            $pval = $self->value_cooked($tname, $attr, $invalid, $v->[$j]);
+            $FH->print(', ', $pval);
+            $FH->print(' (', $v->[$j], ')') if $v->[$j] ne $pval;
+          }
 
-	  $FH->print('}');
-	}
+          $FH->print('}');
+        }
 
-	$FH->print("\n");
+        $FH->print("\n");
       }
     }
   }
