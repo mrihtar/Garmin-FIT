@@ -4764,6 +4764,8 @@ $mesg_name_vs_num = $named_type{mesg_num};
      50 => +{'name' => 'unknown50'}, # unknown ENUM
      51 => +{'name' => 'unknown51'}, # unknown ENUM
      52 => +{'name' => 'unknown52'}, # unknown UINT16
+     53 => +{'name' => 'unknown53'}, # unknown ENUM
+     56 => +{'name' => 'unknown56'}, # unknown ENUM
    },
 
    14 => +{
