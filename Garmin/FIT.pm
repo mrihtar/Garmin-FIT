@@ -3,6 +3,7 @@ package Garmin::FIT;
 use FileHandle;
 use POSIX qw(BUFSIZ);
 use Time::Local;
+use Scalar::Util qw(looks_like_number);
 
 BEGIN {
   $uint64_invalid = undef;
@@ -42,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.25;
+$version = 0.26;
 $version_major_scale = 100;
 
 sub version_major {
@@ -3958,7 +3959,7 @@ sub named_type_value {
      7 => +{'name' => 'cum_operating_time', 'unit' => 's'},
      8 => +{'name' => 'unknown8'}, # unknown UINT32
      9 => +{'name' => 'unknown9'}, # unknown UINT8
-     10 => +{'name' => 'battery_voltage', 'scale' => 256, 'unit' => 'v'},
+     10 => +{'name' => 'battery_voltage', 'scale' => 256, 'unit' => 'V'},
      11 => +{'name' => 'battery_status', 'type_name' => 'battery_status'},
      15 => +{'name' => 'unknown15'}, # unknown UINT32
      16 => +{'name' => 'unknown16'}, # unknown UINT32
@@ -6056,6 +6057,94 @@ sub print_all_fields {
 
         $FH->print("\n");
       }
+    }
+  }
+
+  1;
+}
+
+sub print_all_json {
+  my ($self, $desc, $v, %opt) = @_;
+  my ($indent, $FH, $skip_invalid) = @opt{qw(indent FH skip_invalid)};
+
+  my $out = 0;
+
+  $FH=\*STDOUT if !defined $FH;
+  if ($desc->{array_length} == $#$v) {
+    $FH->print($indent, '"compressed_timestamp": "', $self->named_type_value('date_time', $v->[$#$v]), '"');
+    $out = $out + 1;
+  }
+
+  my $i_name;
+
+  foreach $i_name (sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_/} keys %$desc) {
+    my $name = $i_name;
+
+    $name =~ s/^i_//;
+
+    my $attr = $desc->{'a_' . $name};
+    my $tname = $desc->{'t_' . $name};
+    my $pname = $name;
+
+    if (ref $attr->{switch} eq 'HASH') {
+      my $t_attr = $self->switched($desc, $v, $attr->{switch});
+
+      if (ref $t_attr eq 'HASH') {
+        $attr = $t_attr;
+        $tname = $attr->{type_name};
+        $pname = $attr->{name};
+      }
+    }
+
+    my $i = $desc->{$i_name};
+    my $c = $desc->{'c_' . $name};
+    my $type = $desc->{'T_' . $name};
+    my $invalid = $desc->{'I_' . $name};
+    my $j;
+
+    for ($j = 0 ; $j < $c ; ++$j) {
+      isnan($v->[$i + $j]) && next;
+      $v->[$i + $j] != $invalid && last;
+    }
+
+    if ($j < $c || !$skip_invalid) {
+      $self->last_timestamp($v->[$i]) if $type == FIT_UINT32 && $tname eq 'date_time' && $pname eq 'timestamp';
+      $FH->print(",\n") if $out;
+      $FH->print($indent, '"', $pname, '": ');
+
+      if ($type == FIT_STRING) {
+        $FH->print("\"", $self->string_value($v, $i, $c), "\"");
+      }
+      else {
+        $FH->print('[') if $c > 1;
+
+        my $pval = $self->value_cooked($tname, $attr, $invalid, $v->[$i]);
+
+        if (looks_like_number($pval)) {
+          $FH->print($pval);
+        }
+        else {
+          $FH->print("\"$pval\"");
+        }
+
+        if ($c > 1) {
+          my ($j, $k);
+
+          for ($j = $i + 1, $k = $i + $c ; $j < $k ; ++$j) {
+            $pval = $self->value_cooked($tname, $attr, $invalid, $v->[$j]);
+            $FH->print(', ');
+            if (looks_like_number($pval)) {
+              $FH->print($pval);
+            }
+            else {
+              $FH->print("\"$pval\"");
+            }
+          }
+
+          $FH->print(']');
+        }
+      }
+      $out = $out + 1;
     }
   }
 

@@ -6,14 +6,23 @@ $use_gmtime = 0 if !defined $use_gmtime;
 $numeric_date_time = 0 if !defined $numeric_date_time;
 $semicircles_to_deg = 1 if !defined $semicircles_to_deg;
 $mps_to_kph = 1 if !defined $mps_to_kph;
-$without_unit = 0 if !defined $without_unit;
 $show_version = 0 if !defined $show_version;
 $maybe_chained = 0 if !defined $maybe_chained;
+$print_json = 0 if !defined $print_json;
+if ($print_json) {
+  $without_unit = 1 if !defined $without_unit;
+} else {
+  $without_unit = 0 if !defined $without_unit;
+}
 
-my $version = "0.06x";
+my $version = "0.07";
+my $outr = 0;
 
 if ($show_version) {
-  print $version, "\n";
+  printf STDERR "fitdump $version  Copyright (c) 2017 Kiyokazu Suto, Matjaz Rihtar  (Jan 18, 2017)\n";
+  printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
+  printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
+    Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   exit;
 }
 
@@ -26,13 +35,26 @@ sub dump_it {
     ref $o_cb eq 'ARRAY' and ref $o_cb->[0] eq 'CODE' and $o_cb->[0]->($self, $desc, $v, @$o_cb[1 .. $#$o_cb]);
   }
 
-  if ($desc->{message_name} ne '') {
-    print "$desc->{message_name}";
-  } else {
-    print "unknown";
+  if ($print_json) {
+    print ",\n" if $outr;
+    if ($desc->{message_name} ne '') {
+      print "    {\"$desc->{message_name}\": {\n";
+    } else {
+      print "    {\"unknown$desc->{message_number}\": {\n";
+    }
+    $self->print_all_json($desc, $v, indent => '      ', skip_invalid => 1);
+    print "\n    }}";
+    $outr = $outr + 1;
   }
-  print " (", $desc->{message_number}, ", type: ", $desc->{local_message_type}, ", length: ", $desc->{message_length}, " bytes):\n";
-  $self->print_all_fields($desc, $v, indent => '  ');
+  else {
+    if ($desc->{message_name} ne '') {
+      print "$desc->{message_name}";
+    } else {
+      print "unknown";
+    }
+    print " (", $desc->{message_number}, ", type: ", $desc->{local_message_type}, ", length: ", $desc->{message_length}, " bytes):\n";
+    $self->print_all_fields($desc, $v, indent => '  ');
+  }
 }
 
 sub fetch_from {
@@ -62,6 +84,9 @@ sub fetch_from {
   }
 
   my $chained;
+  my $outf = 0;
+
+  print "{\n" if $print_json;
 
   for (;;) {
     my ($fsize, $proto_ver, $prof_ver, $h_extra, $h_crc_expected, $h_crc_calculated) = $obj->fetch_header;
@@ -76,38 +101,63 @@ sub fetch_from {
     my ($proto_major, $proto_minor) = $obj->protocol_version_major($proto_ver);
     my ($prof_major, $prof_minor) = $obj->profile_version_major($prof_ver);
 
-    print "\n" if $chained;
-    printf "File size: %lu bytes, protocol ver: %u.%02u, profile ver: %u.%02u\n", $fsize, $proto_major, $proto_minor, $prof_major, $prof_minor;
+    if ($print_json) {
+      if ($chained) {
+        print ", {\n";
+      } else {
+        print "\"file\": [{\n";
+      }
+      printf "  \"crc\": \"0x%04X\",\n", $obj->crc;
+      print "  \"header\": {\n";
+      if (defined $h_crc_calculated) {
+        printf "    \"crc\": \"0x%04X\",\n", $h_crc_calculated;
+      }
+      print "    \"file_size\": $fsize,\n";
+      printf "    \"protocol_version\": \"%u.%02u\",\n", $proto_major, $proto_minor;
+      printf "    \"profile_version\": \"%u.%02u\"\n", $prof_major, $prof_minor;
+      print "  },\n";
+      print "  \"records\": [\n";
+    }
+    else {
+      print "\n" if $chained;
+      printf "File size: %lu bytes, protocol ver: %u.%02u, profile ver: %u.%02u\n", $fsize, $proto_major, $proto_minor, $prof_major, $prof_minor;
 
-    if ($h_extra ne '') {
-      print "Extra bytes in file header";
+      if ($h_extra ne '') {
+        print "Extra bytes in file header";
 
-      my ($i, $n);
+        my ($i, $n);
 
-      for ($i = 0, $n = length($h_extra) ; $i < $n ; ++$i) {
-	print "\n" if !($i % 16);
-	print ' ' if !($i % 4);
-	printf " %02x", ord(substr($h_extra, $i, 1));
+        for ($i = 0, $n = length($h_extra) ; $i < $n ; ++$i) {
+          print "\n" if !($i % 16);
+          print ' ' if !($i % 4);
+          printf " %02x", ord(substr($h_extra, $i, 1));
+        }
+
+        print "\n";
       }
 
-      print "\n";
-    }
-
-    if (defined $h_crc_calculated) {
-      if ($h_crc_expected != $h_crc_calculated) {
-	printf "File header CRC: expected=0x%04X, calculated=0x%04X\n", $h_crc_expected, $h_crc_calculated;
-      } else {
-	printf "File header CRC: 0x%04X\n", $h_crc_calculated;
+      if (defined $h_crc_calculated) {
+        if ($h_crc_expected != $h_crc_calculated) {
+          printf "File header CRC: expected=0x%04X, calculated=0x%04X\n", $h_crc_expected, $h_crc_calculated;
+        } else {
+          printf "File header CRC: 0x%04X\n", $h_crc_calculated;
+        }
       }
     }
 
     1 while $obj->fetch;
 
-    print STDERR $obj->error, "\n" if !$obj->end_of_chunk && !$obj->EOF;
-    if ($obj->crc_expected != $obj->crc) {
-      printf "CRC: expected=0x%04X, calculated=0x%04X\n", $obj->crc_expected, $obj->crc;
-    } else {
-      printf "CRC: 0x%04X\n", $obj->crc_expected;
+    if ($print_json) {
+      print "\n  ]"; # records
+      print "\n}"; # file
+      $outf = $outf + 1;
+    }
+    else {
+      if ($obj->crc_expected != $obj->crc) {
+        printf "CRC: expected=0x%04X, calculated=0x%04X\n", $obj->crc_expected, $obj->crc;
+      } else {
+        printf "CRC: 0x%04X\n", $obj->crc_expected;
+      }
     }
 
     if ($maybe_chained) {
@@ -115,12 +165,16 @@ sub fetch_from {
       $chained = 1;
     }
     else {
+      print STDERR $obj->error, "\n" if !$obj->end_of_chunk && !$obj->EOF;
       my $garbage_size = $obj->trailing_garbages;
 
-      print "Trailing $garbage_size bytes of garbage skipped\n" if $garbage_size > 0;
+      print STDERR "Trailing $garbage_size bytes of garbage skipped\n" if $garbage_size > 0;
       last;
     }
   }
+
+  print "]" if $outf;
+  print "\n}\n" if $print_json;
 
   $obj->close;
 }
@@ -131,8 +185,9 @@ select($old_fh);
 
 if (@ARGV > 1) {
   do {
-    print "***** $ARGV[0] *****\n";
+    print "***** $ARGV[0] *****\n" if !$print_json;
     &fetch_from(shift @ARGV);
+    $outr = 0;
   } while (@ARGV);
 }
 elsif (@ARGV) {
