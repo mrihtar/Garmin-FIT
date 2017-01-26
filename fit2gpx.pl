@@ -150,6 +150,7 @@ my @prev_dist; my @prev_distDiff;
 my @prev_alt; my @prev_altDiff;
 
 my %alt_state = ( q => 0, r => 0, p => 0, x => 0, k => 0, );
+my $orig_alt = [];
 my $filt_alt = [];
 #my %pwr_state = ( q => 0, r => 0, p => 0, x => 0, k => 0, );
 
@@ -186,6 +187,7 @@ my $sensors = [];
 my $zones = [];
 my $records = [];
 my $laps = [];
+my $sessions = [];
 
 my $fit = Garmin::FIT->new();
 ReadFitFile($file);
@@ -210,7 +212,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.08  Copyright (c) 2016-2017 Matjaz Rihtar  (Jan 4, 2017)\n";
+    printf STDERR "fit2gpx 2.09  Copyright (c) 2016-2017 Matjaz Rihtar  (Jan 26, 2017)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -254,6 +256,7 @@ sub ReadFitFile {
         elsif ($name eq "zones_target") { push @$zones, $msg; }
         elsif ($name eq "record") { push @$records, $msg; }
         elsif ($name eq "lap") { push @$laps, $msg; }
+        elsif ($name eq "session") { push @$sessions, $msg; }
       }
       return 1;
     }
@@ -332,8 +335,13 @@ sub FillGlobalVars {
   while (($k, $v) = each %mh) {
     if ($k eq "manufacturer") { $g_manuf = ucfirst $v; }
     elsif ($k eq "garmin_product") { $g_product = $v; }
+    elsif ($k eq "product") { $g_product = $v; } # for non Garmin products
     elsif ($k eq "serial_number") { $g_serial = $v; }
   }
+
+  # Fill in default values if no data found
+  $g_manuf = "Generic" if !defined $g_manuf;
+  $g_product = "unknown" if !defined $g_product;
 
   # Find profile data in first user_profile
   $m = @{$profiles}[0];
@@ -446,6 +454,62 @@ sub FillGlobalVars {
     elsif ($k eq "avg_power") { $g_avgPower = $v; } # invalid
     elsif ($k eq "max_power") { $g_maxPower = $v; } # invalid
   }
+
+  # Find additional/missing general info in first session
+  $m = @{$sessions}[0];
+  %mh = %$m;
+  while (($k, $v) = each %mh) {
+    if ($k eq "start_time" && !defined $g_startTime)
+      { $g_startTime = $v; } # + $timeoffs; }
+    elsif ($k eq "sport" && !defined $g_sport)
+      { $g_sport = $v; }
+    elsif ($k eq "sub_sport" && !defined $g_subSport)
+      { $g_subSport = $v; }
+    elsif ($k eq "start_position_lat" && !defined $g_startLat)
+      { $g_startLat = $v; }
+    elsif ($k eq "start_position_long" && !defined $g_startLon)
+      { $g_startLon = $v; }
+    elsif ($k eq "total_elapsed_time" && !defined $g_totElapsTime)
+      { $g_totElapsTime = $v; }
+    elsif ($k eq "total_timer_time" && !defined $g_totTimerTime)
+      { $g_totTimerTime = $v; }
+    elsif ($k eq "time_standing" && !defined $g_totTimeStand)
+      { $g_totTimeStand = $v; } # invalid
+    elsif ($k eq "total_distance" && !defined $g_totDistance)
+      { $g_totDistance = $v; } # m
+    elsif ($k eq "total_cycles" && !defined $g_totCycles)
+      { $g_totCycles = $v; }
+    elsif ($k eq "total_calories" && !defined $g_totCal)
+      { $g_totCal = $v; }
+    elsif ($k eq "time_in_hr_zone" && !defined $g_timeHrZone)
+      { $g_timeHrZone = $v; } # array
+    elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
+      { $g_avgSpeed = $v; }
+    elsif ($k eq "max_speed" && !defined $g_maxSpeed)
+      { $g_maxSpeed = $v; }
+    elsif ($k eq "total_ascent" && !defined $g_totAscent)
+      { $g_totAscent = $v; }
+    elsif ($k eq "total_descent" && !defined $g_totDescent)
+      { $g_totDescent = $v; }
+    elsif ($k eq "avg_heart_rate" && !defined $g_avgHr)
+      { $g_avgHr = $v; }
+    elsif ($k eq "max_heart_rate" && !defined $g_maxHr)
+      { $g_maxHr = $v; }
+    elsif ($k eq "avg_cadence" && !defined $g_avgCad)
+      { $g_avgCad = $v; }
+    elsif ($k eq "max_cadence" && !defined $g_maxCad)
+      { $g_maxCad = $v; }
+    elsif ($k eq "avg_power" && !defined $g_avgPower)
+      { $g_avgPower = $v; } # invalid
+    elsif ($k eq "max_power" && !defined $g_maxPower)
+      { $g_maxPower = $v; } # invalid
+  }
+
+  # Fill in default values if no data found
+  $g_sport = "generic" if !defined $g_sport;
+  $g_subSport = "generic" if !defined $g_subSport;
+  $g_totCal = 0 if !defined $g_totCal;
+  $g_avgHr = 0 if !defined $g_avgHr;
 
   my @lt = localtime($g_startTime);
   $f_startTime = POSIX::strftime("%d-%b-%y %H:%M", @lt);
@@ -803,23 +867,26 @@ sub FilterAlt {
   my $alt; my $altf;
 
   my $times = [];
-  my $orig_alt = [];
+  $orig_alt = [];
   $filt_alt = [];
+  my $priv_alt = $g_homeAlt;
   foreach (@$records) {
     $timestamp = undef;
     $alt = undef;
 
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
-      elsif ($k eq "altitude") { $alt = $v; }
+      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
     }
-    if (defined $alt) {
-      $altf = kalman_update(\%alt_state, $alt);
-      push @$times, $timestamp;
-      push @$orig_alt, $alt;
-      push @$filt_alt, $altf;
-    # printf STDERR "alt = %g, altf = %g\n", $alt, $altf;
-    }
+    if (!defined $alt) { $alt = $priv_alt; }
+
+    $altf = kalman_update(\%alt_state, $alt);
+    push @$times, $timestamp;
+    push @$orig_alt, $alt;
+    push @$filt_alt, $altf;
+  # printf STDERR "alt = %g, altf = %g\n", $alt, $altf;
+
+    $priv_alt = $alt;
   }
   # Fix filtered delay (2 positions, depends on kalman_init parameters)
   if (scalar @$filt_alt) {
@@ -908,16 +975,20 @@ sub ProcessRecord {
   my $k; my $v;
   while (($k, $v) = each %mh) {
     if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
-    elsif ($k eq "position_lat") { $lat = $v; }
-    elsif ($k eq "position_long") { $lon = $v; }
+    elsif ($k eq "position_lat") { $lat = $v; } # can be missing
+    elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
-    elsif ($k eq "altitude") { $alt = $v; }
+    elsif ($k eq "altitude") { $alt = $v; } # can be invalid
     elsif ($k eq "speed") { $speed = $v; }
-    elsif ($k eq "power") { $power = $v; }
+    elsif ($k eq "power") { $power = $v; } # can be missing (=> calculated)
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
   }
+
+  # Fill in default values if no data found
+  $lat = 0 if !defined $lat;
+  $lon = 0 if !defined $lon;
 
   if (defined $timestamp) {
     if (!defined $lat) { $lat = $prev_lat; }
@@ -957,7 +1028,7 @@ sub ProcessRecord {
 
 #   my $altDiff = $alt - $prev_alt[-1];
     # Calculate alt diff from kalman filtered alt
-    my $altDiff = @$filt_alt[$$fai] - $prev_alt[-1]; ${$fai}++;
+    my $altDiff = @{$filt_alt}[$$fai] - $prev_alt[-1]; ${$fai}++;
     for (my $ii = 0; $ii < scalar @prev_alt; $ii++) {
       if ($ii == 0) { $diff = $alt - $prev_alt[-($ii+1)]; }
       else { $diff = $prev_alt[-$ii] - $prev_alt[-($ii+1)]; }
@@ -1036,7 +1107,9 @@ sub ProcessRecord {
 
     # cal = % totCal +/- diff(hr, avgHr) % totCal
     my $ct = $g_totCal*$time/$g_totElapsTime;
-    my $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct;
+    my $cal;
+    if ($g_avgHr != 0) { $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct; }
+    else { $cal = $ct; }
     #done: calories = $cal
 
     #done: distanceAbsolute = $dist
@@ -1278,8 +1351,10 @@ sub PrintGpxTracks {
   printf "%s<type>%s</type>\n", $indent x 2, ucfirst $g_sport;
 
   printf "%s<trkseg>\n", $indent x 2;
-  foreach (@{$records}) {
-    PrintGpxTrkpt(\%$_);
+  my $ai = 0; # alt index
+  foreach (@$records) {
+    PrintGpxTrkpt(\%$_, $ai);
+    $ai++;
   }
   printf "%s</trkseg>\n", $indent x 2;
 
@@ -1315,6 +1390,7 @@ sub PrintGpxTrkpt {
 
   my $m = shift;
   my %mh = %$m;
+  my $ai = shift; # alt index
 
   my $timestamp = undef;
   my $lon = undef; my $lat = undef;
@@ -1326,14 +1402,19 @@ sub PrintGpxTrkpt {
   while (($k, $v) = each %mh) {
     # mandatory
     if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
-    elsif ($k eq "position_long") { $lon = $v; }
-    elsif ($k eq "position_lat") { $lat = $v; }
+    elsif ($k eq "position_long") { $lon = $v; } # can be missing
+    elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     # optional
-    elsif ($k eq "altitude") { $ele = $v; }
+    elsif ($k eq "altitude") { $ele = $v; } # can be invalid
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
   }
+
+  # Fill in default values if no data found
+  $lat = 0 if !defined $lat;
+  $lon = 0 if !defined $lon;
+  $ele = @{$orig_alt}[$ai] if !defined $ele; # from FilterAlt
 
   if (defined $timestamp) {
     if ($rev_coord) {
@@ -1396,7 +1477,7 @@ sub PrintGpxExtensions {
 
   # Cluetrust extension, ignored by Garmin
   my $lap_index = 1;
-  foreach (@{$laps}) {
+  foreach (@$laps) {
     PrintGpxLap(\%$_, $lap_index);
     $lap_index++;
   }
@@ -1473,6 +1554,23 @@ sub PrintGpxLap {
     elsif ($k eq "max_power") { $maxpower = $v; } # invalid ???
     elsif ($k eq "lap_trigger") { $ltrigger = conv_trigger($v); }
   }
+
+  # Fill in default values if no data found
+  $startlat = 0 if !defined $startlat;
+  $startlon = 0 if !defined $startlon;
+  $endlat = 0 if !defined $endlat;
+  $endlon = 0 if !defined $endlon;
+  $tcycles = 0 if !defined $tcycles;
+  $tcal = 0 if !defined $tcal;
+  $avgspeed = 0 if !defined $avgspeed;
+  $maxspeed = 0 if !defined $maxspeed;
+  $tascent = 0 if !defined $tascent;
+  $tdescent = 0 if !defined $tdescent;
+  $avghr = 0 if !defined $avghr;
+  $maxhr = 0 if !defined $maxhr;
+  $avgcad = 0 if !defined $avgcad;
+  $maxcad = 0 if !defined $maxcad;
+  $ltrigger = "manual" if !defined $ltrigger;
 
   if (defined $timestamp) {
     printf "%s<gpxdata:lap>\n", $indent x 2;
@@ -1611,7 +1709,7 @@ sub PrintGpxLap {
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "min_temperature", "min", $g_minTemp;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
-      $indent x 3, "avg_temperature", "avg", Median(@{$temps});
+      $indent x 3, "avg_temperature", "avg", Median(@$temps);
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "max_temperature", "max", $g_maxTemp;
 

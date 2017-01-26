@@ -11,15 +11,17 @@ $maybe_chained = 0 if !defined $maybe_chained;
 $print_json = 0 if !defined $print_json;
 if ($print_json) {
   $without_unit = 1 if !defined $without_unit;
+  $skip_invalid = 1 if !defined $skip_invalid;
 } else {
   $without_unit = 0 if !defined $without_unit;
+  $skip_invalid = 0 if !defined $skip_invalid;
 }
 
-my $version = "0.07";
+my $version = "0.08";
 my $outr = 0;
 
 if ($show_version) {
-  printf STDERR "fitdump $version  Copyright (c) 2017 Kiyokazu Suto, Matjaz Rihtar  (Jan 18, 2017)\n";
+  printf STDERR "fitdump $version  Copyright (c) 2017 Kiyokazu Suto, Matjaz Rihtar  (Jan 26, 2017)\n";
   printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
   printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
     Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -42,7 +44,7 @@ sub dump_it {
     } else {
       print "    {\"unknown$desc->{message_number}\": {\n";
     }
-    $self->print_all_json($desc, $v, indent => '      ', skip_invalid => 1);
+    $self->print_all_json($desc, $v, indent => '      ', skip_invalid => $skip_invalid);
     print "\n    }}";
     $outr = $outr + 1;
   }
@@ -53,7 +55,7 @@ sub dump_it {
       print "unknown";
     }
     print " (", $desc->{message_number}, ", type: ", $desc->{local_message_type}, ", length: ", $desc->{message_length}, " bytes):\n";
-    $self->print_all_fields($desc, $v, indent => '  ');
+    $self->print_all_fields($desc, $v, indent => '  ', skip_invalid => $skip_invalid);
   }
 }
 

@@ -23,6 +23,20 @@ Currently the following conversions are supported:
   <td>SigmaSport log file</td>
   <td>.slf</td>
 </tr>
+<tr>
+  <td><img src="images/Ant-plus-logo.png" width="45px"></td>
+  <td>Garmin FIT</td>
+  <td><img src="images/JSON-logo.png" height="45px"></td>
+  <td>JavaScript Object Notation</td>
+  <td>.json</td>
+</tr>
+<tr>
+  <td><img src="images/Ant-plus-logo.png" width="45px"></td>
+  <td>Garmin FIT</td>
+  <td><img src="images/text-dump.png" height="45px"></td>
+  <td>Text dump of all data records</td>
+  <td>.txt</td>
+</tr>
 </table>
 
 Main library for reading and parsing Garmin FIT file is a modified/updated
@@ -39,7 +53,8 @@ FIT Protocol | FIT Profile
 Some of the messages and fields used in this implementation are not described
 in the latest official [FIT SDK] documentation and are therefore
 experimental/unsupported. This implementation was tested on FIT files from
-Garmin Edge device only. It works in both Windows and Unix environments.
+Garmin Edge device only. Other devices might produce FIT files which don't
+have all required fields. Scripts work in both Windows and Unix environments.
 Support for 64-bit integers is not tested at all.
 
 Conversion scripts need to be run from the command line (there's no GUI).
@@ -161,6 +176,45 @@ which is a perfect software for **offline** evaluation of cycling statistics
 and training sessions.
 
 <img src="images/SigmaDataCenter.jpg">
+
+#### FIT to JSON (JavaScript Object Notation)
+
+Use **fitdump.pl**:
+<pre>
+$ fitdump.pl -print_json=1 input.fit > input.json
+</pre>
+If you want to include the units, which are switched off by default for JSON,
+add command line switch ```-without_unit=0```.
+
+#### FIT to Text dump
+
+**fitdump.pl** reads the contents for Garmin .FIT files given on command line
+(or standard input if no file is specified), and prints them in human readable
+form. Usage:
+<pre>
+$ fitdump.pl input.fit > input.txt
+or
+$ cat input.fit | fitdump.pl > input.txt
+</pre>
+The following command line switches are available (see example for JSON above):
+<pre>
+-semicircles_to_deg=(0|1)       default: 1
+-mps_to_kph=(0|1)               default: 1
+-use_gmtime=(0|1)               default: 0
+-maybe_chained=(0|1)            default: 0
+-print_json=(0|1)               default: 0
+-without_unit=(0|1)             default: 0 (1 for print_json)
+-skip_invalid=(0|1)             default: 0 (1 for print_json)
+-numeric_date_time=(0|1)        default: 0
+-show_version=(0|1)             default: 0
+</pre>
+Fields in .FIT files, which are not documented in [FIT SDK], are named as
+```unknown<field_number>```. New fields, which typically appear in newer
+versions of FIT Profiles and [Garmin::FIT library] doesn't know them yet,
+are named as ```xxx<field_number>```.
+
+**fitdump.pl** is written in a generic way and will read all versions of
+.FIT files (past and future).
 
 [Garmin::FIT library]: http://pub.ks-and-ks.ne.jp/cycling/GarminFIT.shtml
 [FIT SDK]: http://www.thisisant.com/resources/fit
