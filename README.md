@@ -33,7 +33,7 @@ Currently the following conversions are supported:
 <tr>
   <td><img src="images/Ant-plus-logo.png" width="45px"></td>
   <td>Garmin FIT</td>
-  <td><img src="images/text-dump.png" height="45px"></td>
+  <td><img src="images/Text-dump.png" height="45px"></td>
   <td>Text dump of all data records</td>
   <td>.txt</td>
 </tr>
