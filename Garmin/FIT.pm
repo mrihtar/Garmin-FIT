@@ -43,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.26;
+$version = 0.27;
 $version_major_scale = 100;
 
 sub version_major {
@@ -2972,12 +2972,12 @@ else {
 
    );
 
-my ($typenam, $typdesc);
+my ($typenam, $typedesc);
 
-foreach $typename (keys %named_type) {
+foreach $typenam (keys %named_type) {
   $typedesc = $named_type{$typenam};
 
-  if ($typedesc->{_moved_to} ne '') {
+  if (defined $typedesc->{_moved_to} && $typedesc->{_moved_to} ne '') {
     my $to = $named_type{$typedesc->{_moved_to}};
 
     ref $to eq 'HASH' and $named_type{$typenam} = +{%$to};
@@ -5390,6 +5390,8 @@ sub fetch_definition_message {
     $i_array_t += $c;
   }
 
+  $desc{template_without_devdata} = $desc{template};
+  $desc{devdata_first} = $i_array;
   $desc{devdata_nfields} = 0;
 
   if ($rechd & $rechd_mask_devdata_message) {
@@ -5480,6 +5482,7 @@ sub fetch_definition_message {
 
 sub cat_definition_message {
   my ($self, $desc, $p) = @_;
+  my $drop_devdata = $self->drop_developer_data;
 
   if (!defined $p) {
     my $bin = '';
@@ -5487,35 +5490,37 @@ sub cat_definition_message {
     $p = \$bin;
   }
 
-  my @i_name = sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_[A-Za-z]/} keys %$desc;
-  my @devdata_i_name = sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_\d+_/} keys %$desc;
-  my $mask = @devdata_i_name ? $rechd_mask_devdata_message : 0;
-  my ($endian, $msgnum) = @{$desc}{qw(endian message_number)};
+  if (!$drop_devdata || ($desc->{message_name} ne 'developer_data_id' && $desc->{message_name} ne 'field_description')) {
+    my @i_name = sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_[A-Za-z]/} keys %$desc;
+    my @devdata_i_name = $drop_devdata ? () : sort {$desc->{$a} <=> $desc->{$b}} grep {/^i_\d+_/} keys %$desc;
+    my $mask = @devdata_i_name ? $rechd_mask_devdata_message : 0;
+    my ($endian, $msgnum) = @{$desc}{qw(endian message_number)};
 
-  $msgnum = unpack('n', pack('v', $msgnum)) if $endian != $my_endian;
-  $$p .= pack($defmsg_min_template, $desc->{local_message_type} | $rechd_mask_definition_message | $mask, 0, $endian, $msgnum, $#i_name + 1);
+    $msgnum = unpack('n', pack('v', $msgnum)) if $endian != $my_endian;
+    $$p .= pack($defmsg_min_template, $desc->{local_message_type} | $rechd_mask_definition_message | $mask, 0, $endian, $msgnum, $#i_name + 1);
 
-  while (@i_name) {
-    my $name = shift @i_name;
-
-    $name =~ s/^i_//;
-
-    my $size = $desc->{'s_' . $name};
-
-    $$p .= pack($deffld_template, $desc->{'N_' . $name}, $desc->{'c_' . $name} * $size, $desc->{'T_' . $name} | ($size > 1 ? $deffld_mask_endian_p : 0));
-  }
-
-  if (@devdata_i_name) {
-    $$p .= pack($devdata_min_template, $#devdata_i_name + 1);
-
-    while (@devdata_i_name) {
-      my $name = shift @devdata_i_name;
+    while (@i_name) {
+      my $name = shift @i_name;
 
       $name =~ s/^i_//;
 
       my $size = $desc->{'s_' . $name};
 
-      $$p .= pack($devdata_deffld_template, $desc->{'N_' . $name}, $desc->{'c_' . $name} * $size, $name =~ /^(\d+)_/);
+      $$p .= pack($deffld_template, $desc->{'N_' . $name}, $desc->{'c_' . $name} * $size, $desc->{'T_' . $name} | ($size > 1 ? $deffld_mask_endian_p : 0));
+    }
+
+    if (@devdata_i_name) {
+      $$p .= pack($devdata_min_template, $#devdata_i_name + 1);
+
+      while (@devdata_i_name) {
+	my $name = shift @devdata_i_name;
+
+	$name =~ s/^i_//;
+
+	my $size = $desc->{'s_' . $name};
+
+	$$p .= pack($devdata_deffld_template, $desc->{'N_' . $name}, $desc->{'c_' . $name} * $size, $name =~ /^(\d+)_/);
+      }
     }
   }
 
@@ -5599,27 +5604,44 @@ sub fetch_data_message {
 
 sub pack_data_message {
   my ($self, $desc, $v) = @_;
+  my $drop_devdata = $self->drop_developer_data;
 
-  if (ref $desc->{packfilter_index} eq 'ARRAY') {
-    my @v = ($v->[0]);
-    my $piv = $desc->{packfilter_index};
-    my ($i, $j);
-
-    for ($i = 1, $j = 3 ; $j < @$piv ; $j += 4) {
-      my ($type, $i_array_t, $c, $i_array) = @$piv[($j - 3) .. $j];
-
-      $i < $i_array and push @v, @$v[$i .. ($i_array - 1)];
-      $i = $i_array + $c;
-
-      for (; $i_array < $i ; ++$i_array) {
-        push @v, $packfilter[$type]->($v->[$i_array]);
-      }
-    }
-
-    pack($desc->{template}, @v);
+  if ($drop_devdata && ($desc->{message_name} eq 'developer_data_id' || $desc->{message_name} eq 'field_description')) {
+    '';
   }
   else {
-    pack($desc->{template}, @$v);
+    my $rv = $v;
+
+    if (ref $desc->{packfilter_index} eq 'ARRAY') {
+      my @v = ($v->[0]);
+      my $piv = $desc->{packfilter_index};
+      my ($i, $j);
+
+      for ($i = 1, $j = 3 ; $j < @$piv ; $j += 4) {
+	my ($type, $i_array_t, $c, $i_array) = @$piv[($j - 3) .. $j];
+
+	$i < $i_array and push @v, @$v[$i .. ($i_array - 1)];
+	$i = $i_array + $c;
+
+	for (; $i_array < $i ; ++$i_array) {
+	  push @v, $packfilter[$type]->($v->[$i_array]);
+	}
+      }
+
+      $rv = \@v;
+    }
+
+    if ($drop_devdata) {
+      if ($desc->{devdata_first} > 0) {
+	pack($desc->{template_without_devdata}, @$rv[0 .. ($desc->{devdata_first} - 1)]);
+      }
+      else {
+	'';
+      }
+    }
+    else {
+      pack($desc->{template}, @$rv);
+    }
   }
 }
 
@@ -5841,6 +5863,17 @@ sub seconds_to_hms {
   $hms;
 }
 
+sub drop_developer_data {
+  my $self = shift;
+
+  if (@_) {
+    $self->{drop_developer_data} = $_[0];
+  }
+  else {
+    $self->{drop_developer_data};
+  }
+}
+
 sub initialize {
   my $self = shift;
   my $buffer = '';
@@ -5855,6 +5888,7 @@ sub initialize {
      'FH' => new FileHandle,
      'data_message_callback' => +{},
      'unit_table' => +{},
+     'drop_developer_data' => 0,
      );
 
   $self->data_message_callback_by_name(developer_data_id => \&syscallback_devdata_id);
@@ -6596,7 +6630,21 @@ This program is distributed with
 ABSOLUTELY NO WARRANTY.
 
 Anyone can use, modify, and re-distibute this program
-without any restriction.
+without any restriction if version <= 0.20.
+
+The version 0.21 and newers are based on
+
+=for html <blockquote><a href="https://github.com/mrihtar/Garmin-FIT">
+
+Matjaz Rihtar's git repository
+
+=for html </a></blockquote>
+
+version.
+So,
+regardless of the above disclaimer,
+uses, modifications, and re-distributions of this version
+are restricted by the contents of the file LICENSE_LGPL_v2.1.txt in the git repository.
 
 =head1 ACKNOWLEDGEMENT
 
@@ -6604,6 +6652,30 @@ The author is very grateful to Garmin for supplying us free software programers 
 which includes detailed documetation about its proprietary file format.
 
 =head1 CHANGES
+
+=head2 0.26 --E<gt> 0.27
+
+=over 4
+
+=item C<cat_definition_message()>
+
+=item C<pack_data_message()>
+
+use the new method C<drop_developer_data()>.
+
+=item C<drop_developer_data()>
+
+new method to specify wether or not to drop developer data from output.
+
+=item C<initialize()>
+
+initialize the new field C<drop_developer_data>.
+
+=item Top level
+
+fix typos (C<$typename> --E<gt> C<$typenam> and C<$typdesc> --E<gt> C<$typedesc>).
+
+=back
 
 =head2 0.23 --E<gt> 0.24
 
