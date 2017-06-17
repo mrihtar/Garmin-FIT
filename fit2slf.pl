@@ -150,18 +150,21 @@ my @prev_dist; my @prev_distDiff;
 my @prev_alt; my @prev_altDiff;
 
 my %alt_state = ( q => 0, r => 0, p => 0, x => 0, k => 0, );
+my $orig_alt = [];
 my $filt_alt = [];
 #my %pwr_state = ( q => 0, r => 0, p => 0, x => 0, k => 0, );
 
 #------------------------------------------------------------------------------
 # Command line parsing
 my $overwrite = 0;
+my $fpcalc = 0; # force power calculation
 my $file;
 foreach (@ARGV) {
   my $arg = $_;
   if ($arg eq "-v") { Usage(1); }
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
+  elsif ($arg eq "-p") { $fpcalc = 1; }
   else { $file = $arg; }
 }
 
@@ -179,6 +182,7 @@ my $sensors = [];
 my $zones = [];
 my $records = [];
 my $laps = [];
+my $sessions = [];
 
 my $fit = Garmin::FIT->new();
 ReadFitFile($file);
@@ -203,16 +207,17 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.05  Copyright (c) 2016 Matjaz Rihtar  (July 1, 2016)\n";
-    printf STDERR "Garmin::FIT  Copyright (c) 2010-2015 Kiyokazu Suto\n";
+    printf STDERR "fit2slf 2.09  Copyright (c) 2016-2017 Matjaz Rihtar  (Jan 26, 2017)\n";
+    printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
+    printf STDERR "  -p  Force power calculation (default: use fit power data if present)\n";
   }
   _exit(1);
 } # Usage
@@ -240,6 +245,7 @@ sub ReadFitFile {
         elsif ($name eq "zones_target") { push @$zones, $msg; }
         elsif ($name eq "record") { push @$records, $msg; }
         elsif ($name eq "lap") { push @$laps, $msg; }
+        elsif ($name eq "session") { push @$sessions, $msg; }
       }
       return 1;
     }
@@ -318,27 +324,38 @@ sub FillGlobalVars {
   while (($k, $v) = each %mh) {
     if ($k eq "manufacturer") { $g_manuf = ucfirst $v; }
     elsif ($k eq "garmin_product") { $g_product = $v; }
+    elsif ($k eq "product") { $g_product = $v; } # for non Garmin products
     elsif ($k eq "serial_number") { $g_serial = $v; }
   }
+
   # override manufacturer and product (required by Sigma Data Center)
   $g_manuf = "SigmaSport";
   $g_product = "rox100";
+  $g_serial = 1952031142 if !defined $g_serial; # any serial is OK
 
   # Find profile data in first user_profile
   $m = @{$profiles}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "friendly_name") { my $friendlyName = $v; }
-    elsif ($k eq "weight") { $g_weight = $v; } # kg
-    elsif ($k eq "gender") { $g_gender = $v; }
-    elsif ($k eq "age") { $g_age = $v; } # years
-    elsif ($k eq "height") { $g_height = $v; } # m
-    elsif ($k eq "resting_heart_rate") { $g_resHr = $v; }
-    elsif ($k eq "default_max_heart_rate") { $g_hrMax = $v; }
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "friendly_name") { my $friendlyName = $v; }
+      elsif ($k eq "weight") { $g_weight = $v; } # kg
+      elsif ($k eq "gender") { $g_gender = $v; }
+      elsif ($k eq "age") { $g_age = $v; } # years
+      elsif ($k eq "height") { $g_height = $v; } # m
+      elsif ($k eq "resting_heart_rate") { $g_resHr = $v; }
+      elsif ($k eq "default_max_heart_rate") { $g_hrMax = $v; }
+    }
   }
 
+  my $undef_gender = 0;
+  if (!defined $g_gender) { $g_gender = "male"; $undef_gender = 1; }
   my $undef_age = 0;
   if (!defined $g_age) { $g_age = 40; $undef_age = 1; }
+  my $undef_weight = 0;
+  if (!defined $g_weight) { $g_weight = 75.0; $undef_weight = 1; }
+  my $undef_resHr = 0;
+  if (!defined $g_resHr) { $g_resHr = 72; $undef_resHr = 1; }
 
   my $undef_hrMax = 0;
   if (!defined $g_hrMax) {
@@ -370,12 +387,17 @@ sub FillGlobalVars {
     }
   }
 
+  my $undef_wheelSize = 0;
+  if (!defined $g_wheelSize) { $g_wheelSize = 2326; $undef_wheelSize = 1; }
+
   # find zones data in first zones_target
   $m = @{$zones}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "functional_threshold_power") { $g_funcThresPower = $v; }
-    elsif ($k eq "max_heart_rate") { $g_hrMax1 = $v; } # ???
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "functional_threshold_power") { $g_funcThresPower = $v; }
+      elsif ($k eq "max_heart_rate") { $g_hrMax1 = $v; } # ???
+    }
   }
 
   my $undef_funcThresPower = 0;
@@ -423,6 +445,70 @@ sub FillGlobalVars {
     elsif ($k eq "max_power") { $g_maxPower = $v; } # invalid
   }
 
+  # Find additional/missing general info in first session
+  $m = @{$sessions}[0];
+  %mh = %$m;
+  while (($k, $v) = each %mh) {
+    if ($k eq "start_time" && !defined $g_startTime)
+      { $g_startTime = $v; } # + $timeoffs; }
+    elsif ($k eq "sport" && !defined $g_sport)
+      { $g_sport = $v; }
+    elsif ($k eq "sub_sport" && !defined $g_subSport)
+      { $g_subSport = $v; }
+    elsif ($k eq "start_position_lat" && !defined $g_startLat)
+      { $g_startLat = $v; }
+    elsif ($k eq "start_position_long" && !defined $g_startLon)
+      { $g_startLon = $v; }
+    elsif ($k eq "total_elapsed_time" && !defined $g_totElapsTime)
+      { $g_totElapsTime = $v; }
+    elsif ($k eq "total_timer_time" && !defined $g_totTimerTime)
+      { $g_totTimerTime = $v; }
+    elsif ($k eq "time_standing" && !defined $g_totTimeStand)
+      { $g_totTimeStand = $v; } # invalid
+    elsif ($k eq "total_distance" && !defined $g_totDistance)
+      { $g_totDistance = $v; } # m
+    elsif ($k eq "total_cycles" && !defined $g_totCycles)
+      { $g_totCycles = $v; }
+    elsif ($k eq "total_calories" && !defined $g_totCal)
+      { $g_totCal = $v; }
+    elsif ($k eq "time_in_hr_zone" && !defined $g_timeHrZone)
+      { $g_timeHrZone = $v; } # array
+    elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
+      { $g_avgSpeed = $v; }
+    elsif ($k eq "max_speed" && !defined $g_maxSpeed)
+      { $g_maxSpeed = $v; }
+    elsif ($k eq "total_ascent" && !defined $g_totAscent)
+      { $g_totAscent = $v; }
+    elsif ($k eq "total_descent" && !defined $g_totDescent)
+      { $g_totDescent = $v; }
+    elsif ($k eq "avg_heart_rate" && !defined $g_avgHr)
+      { $g_avgHr = $v; }
+    elsif ($k eq "max_heart_rate" && !defined $g_maxHr)
+      { $g_maxHr = $v; }
+    elsif ($k eq "avg_cadence" && !defined $g_avgCad)
+      { $g_avgCad = $v; }
+    elsif ($k eq "max_cadence" && !defined $g_maxCad)
+      { $g_maxCad = $v; }
+    elsif ($k eq "avg_power" && !defined $g_avgPower)
+      { $g_avgPower = $v; } # invalid
+    elsif ($k eq "max_power" && !defined $g_maxPower)
+      { $g_maxPower = $v; } # invalid
+  }
+
+  # Fill in default values if no data found
+  $g_startLat = 0 if !defined $g_startLat;
+  $g_startLon = 0 if !defined $g_startLon;
+  $g_endLat = 0 if !defined $g_endLat;
+  $g_endLon = 0 if !defined $g_endLon;
+  $g_totCal = 0 if !defined $g_totCal;
+  $g_avgSpeed = 0 if !defined $g_avgSpeed;
+  $g_maxSpeed = 0 if !defined $g_maxSpeed;
+  $g_totAscent = 0 if !defined $g_totAscent;
+  $g_totDescent = 0 if !defined $g_totDescent;
+  $g_avgHr = 0 if !defined $g_avgHr;
+  $g_avgCad = 0 if !defined $g_avgCad;
+  $g_maxCad = 0 if !defined $g_maxCad;
+
   # Some other defaults needed for the 1st call (overriden later)
   my $undef_homeAlt;
   if (!defined $g_homeAlt) { $g_homeAlt = 315; $undef_homeAlt = 1; }
@@ -433,14 +519,18 @@ sub FillGlobalVars {
   open TMP, ">", undef or die $!."\n";
   select TMP;
 
-  # Calc missing aver/min/max alt, hr, cad and temp from all records
+  # Calc missing aver/min/max alt, power, hr, cad and temp from all records
   PrintSlfEntries();
 
   select STDOUT;
   close TMP;
 
+  if ($undef_gender) { $g_gender = undef; }
   if ($undef_age) { $g_age = undef; }
+  if ($undef_weight) { $g_weight = undef; }
+  if ($undef_resHr) { $g_resHr = undef; }
   if ($undef_hrMax) { $g_hrMax = undef; }
+  if ($undef_wheelSize) { $g_wheelSize = undef; }
   if ($undef_funcThresPower) { $g_funcThresPower = undef; }
   if ($undef_homeAlt) { $g_homeAlt = undef; }
   if ($undef_bikeWeight) { $g_bikeWeight = undef; }
@@ -658,8 +748,13 @@ sub Median {
 #==============================================================================
 # Print activity block (1st line, header) in slf
 sub PrintSlfHeader {
+  my @wday = qw(Sun Mon Tue Wed Thu Fri Sat);
+  my @mon = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
   my @lt = localtime($g_startTime);
-  $f_startTime = POSIX::strftime("%a %b %e %T GMT%z %Y", @lt);
+
+# Don't use POSIX::strftime("%a %b %e %T GMT%z %Y", @lt) because of locale
+  $f_startTime = $wday[$lt[6]] . " " . $mon[$lt[4]];
+  $f_startTime .= POSIX::strftime(" %e %T GMT%z %Y", @lt);
   $f_startTime =~ s/ +/ /g;
 
   printf "<Activity";
@@ -1039,23 +1134,26 @@ sub FilterAlt {
   my $alt; my $altf;
 
   my $times = [];
-  my $orig_alt = [];
+  $orig_alt = [];
   $filt_alt = [];
+  my $priv_alt = $g_homeAlt;
   foreach (@$records) {
     $timestamp = undef;
     $alt = undef;
 
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
-      elsif ($k eq "altitude") { $alt = $v; }
+      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
     }
-    if (defined $alt) {
-      $altf = kalman_update(\%alt_state, $alt);
-      push @$times, $timestamp;
-      push @$orig_alt, $alt;
-      push @$filt_alt, $altf;
-    # printf STDERR "alt = %g, altf = %g\n", $alt, $altf;
-    }
+    if (!defined $alt) { $alt = $priv_alt; }
+
+    $altf = kalman_update(\%alt_state, $alt);
+    push @$times, $timestamp;
+    push @$orig_alt, $alt;
+    push @$filt_alt, $altf;
+  # printf STDERR "alt = %g, altf = %g\n", $alt, $altf;
+
+    $priv_alt = $alt;
   }
   # Fix filtered delay (2 positions, depends on kalman_init parameters)
   if (scalar @$filt_alt) {
@@ -1132,7 +1230,7 @@ sub PrintSlfEntries {
 } # PrintSlfEntries
 
 #==============================================================================
-# Print single track point from fit file
+# Print single track point (record) from fit file
 # This routine also stores all/min/max values for later aver/min/max processing.
 # Power is calculated according to J.C. Martin et al. (1998).
 # For power and incline calculation smoothed altitude data is used.
@@ -1143,21 +1241,26 @@ sub PrintSlfEntry {
 
   my $timestamp = undef;
   my $lat = undef; my $lon = undef; my $dist = undef;
-  my $alt = undef; my $speed = undef; my $hr = undef;
-  my $cad = undef; my $temp = undef;
+  my $alt = undef; my $speed = undef; my $power = undef;
+  my $hr = undef; my $cad = undef; my $temp = undef;
 
   my $k; my $v;
   while (($k, $v) = each %mh) {
     if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
-    elsif ($k eq "position_lat") { $lat = $v; }
-    elsif ($k eq "position_long") { $lon = $v; }
+    elsif ($k eq "position_lat") { $lat = $v; } # can be missing
+    elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
-    elsif ($k eq "altitude") { $alt = $v; }
+    elsif ($k eq "altitude") { $alt = $v; } # can be invalid
     elsif ($k eq "speed") { $speed = $v; }
+    elsif ($k eq "power") { $power = $v; } # can be missing (=> calculated)
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
   }
+
+  # Fill in default values if no data found
+  $lat = 0 if !defined $lat;
+  $lon = 0 if !defined $lon;
 
   if (defined $timestamp) {
     printf "%s<Entry", $indent x 2;
@@ -1173,6 +1276,7 @@ sub PrintSlfEntry {
     push @$alts, $alt;
     if (!defined $speed) { $speed = $prev_speed; }
     else { $speed /= 3.6; } # m/s
+  # if (!defined $power) { calculate power (see down below) }
     if (!defined $hr) { $hr = $prev_hr; }
     else {
       if ($hr < $g_minHr) { $g_minHr = $hr; }
@@ -1198,7 +1302,7 @@ sub PrintSlfEntry {
 
 #   my $altDiff = $alt - $prev_alt[-1];
     # Calculate alt diff from kalman filtered alt
-    my $altDiff = @$filt_alt[$$fai] - $prev_alt[-1]; ${$fai}++;
+    my $altDiff = @{$filt_alt}[$$fai] - $prev_alt[-1]; ${$fai}++;
     for (my $ii = 0; $ii < scalar @prev_alt; $ii++) {
       if ($ii == 0) { $diff = $alt - $prev_alt[-($ii+1)]; }
       else { $diff = $prev_alt[-$ii] - $prev_alt[-($ii+1)]; }
@@ -1277,7 +1381,9 @@ sub PrintSlfEntry {
 
     # cal = % totCal +/- diff(hr, avgHr) % totCal
     my $ct = $g_totCal*$time/$g_totElapsTime;
-    my $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct;
+    my $cal;
+    if ($g_avgHr != 0) { $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct; }
+    else { $cal = $ct; }
     printf " calories=\"%.6f\"", $cal;
 
     printf " distanceAbsolute=\"%.1f\"", $dist;
@@ -1394,10 +1500,11 @@ sub PrintSlfEntry {
     my $Ptot = $Pnet / $Ec;
   # printf STDERR "Ptot = %g\n", $Ptot;
 
-    my $power;
-    if ($Ptot < 0) { $power = 0; }
-#   else { $power = kalman_update(\%pwr_state, $Ptot); }
-    else { $power = $Ptot; }
+    if (!defined $power || $fpcalc) {
+      if ($Ptot < 0) { $power = 0; }
+#     else { $power = kalman_update(\%pwr_state, $Ptot); }
+      else { $power = $Ptot; }
+    }
   # printf STDERR "power = %g\n", $power;
 
     if ($power < $g_minPower) { $g_minPower = $power; }
