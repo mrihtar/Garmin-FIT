@@ -42,7 +42,7 @@ require Exporter;
 	     FIT_HEADER_LENGTH
 	     );
 
-$version = 0.23;
+$version = 0.24;
 $version_major_scale = 100;
 
 sub version_major {
@@ -5311,7 +5311,7 @@ sub fetch_definition_message {
       }
 
       $name = $self->undocumented_field_name($fnum, $size, $type, $i_string) if !defined $name;
-      $name = "${index}_$name";
+      $name = "${index}_${fnum}_$name";
 
       my $c = int($size / $size[$type] + 0.5);
 
@@ -6352,7 +6352,7 @@ It is expected to be C<1> on success, or C<undef> on failure status.
 
 =head2 Developer data
 
-Fields in devloper data are given names of the form I<<developer data index>>C<_>I<<converted field name>>,
+Fields in devloper data are given names of the form I<<developer data index>>C<_>I<<field definition number>>C<_>I<<converted field name>>,
 and related informations are included I<<data message descriptors>> in the same way as the fields defined in the global .FIT profile.
 
 Each I<<converted field name>> is made from the value of C<field_name> field in the corresponding I<field description message>,
@@ -6389,6 +6389,19 @@ The author is very grateful to Garmin for supplying us free software programers 
 which includes detailed documetation about its proprietary file format.
 
 =head1 CHANGES
+
+=head2 0.23 --E<gt> 0.24
+
+=over 4
+
+=item C<fetch_definition_message()>
+
+inserts I<<field definition number>> to names of fields of developer data.
+
+There is a developer who assigns the same field name to different fields.
+Such fields could not be distinguished with the old naming way.
+
+=back
 
 =head2 0.22 --E<gt> 0.23
 
