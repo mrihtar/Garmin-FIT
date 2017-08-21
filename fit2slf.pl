@@ -207,8 +207,8 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.09  Copyright (c) 2016-2017 Matjaz Rihtar  (Jan 26, 2017)\n";
-    printf STDERR "Garmin::FIT  Copyright (c) 2010-2016 Kiyokazu Suto\n";
+    printf STDERR "fit2slf 2.10  Copyright (c) 2016-2017 Matjaz Rihtar  (Aug 21, 2017)\n";
+    printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
@@ -233,6 +233,8 @@ sub ReadFitFile {
   $fit->semicircles_to_degree(1);
   $fit->mps_to_kph(1);
   $fit->without_unit(1);
+  $fit->maybe_chained(0);
+  $fit->drop_developer_data(1);
   $fit->file($fname);
 
   $fit->data_message_callback_by_name('',
@@ -281,9 +283,9 @@ sub Message {
       my $t_attr = $fit->switched($desc, $v, $attr->{switch});
 
       if (ref $t_attr eq 'HASH') {
-	$attr = $t_attr;
-	$tname = $attr->{type_name};
-	$pname = $attr->{name};
+        $attr = $t_attr;
+        $tname = $attr->{type_name};
+        $pname = $attr->{name};
       }
     }
 
@@ -294,6 +296,7 @@ sub Message {
     my $j;
 
     for ($j = 0 ; $j < $c ; $j++) {
+      Garmin::FIT->isnan($v->[$i + $j]) && next;
       $v->[$i + $j] != $invalid && last;
     }
     if ($j < $c) { # skip invalid
@@ -320,12 +323,14 @@ sub FillGlobalVars {
 
   # Find manufacturer, product name and serial in file_id
   $m = @{$file_ids}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "manufacturer") { $g_manuf = ucfirst $v; }
-    elsif ($k eq "garmin_product") { $g_product = $v; }
-    elsif ($k eq "product") { $g_product = $v; } # for non Garmin products
-    elsif ($k eq "serial_number") { $g_serial = $v; }
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "manufacturer") { $g_manuf = ucfirst $v; }
+      elsif ($k eq "garmin_product") { $g_product = $v; }
+      elsif ($k eq "product") { $g_product = $v; } # for non Garmin products
+      elsif ($k eq "serial_number") { $g_serial = $v; }
+    }
   }
 
   # override manufacturer and product (required by Sigma Data Center)
@@ -417,82 +422,90 @@ sub FillGlobalVars {
 
   # Find all needed general info in first lap
   $m = @{$laps}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "start_time") { $g_startTime = $v; } # + $timeoffs; }
-    elsif ($k eq "sport") { $g_sport = $v; }
-    elsif ($k eq "sub_sport") { $g_subSport = $v; }
-    elsif ($k eq "start_position_lat") { $g_startLat = $v; }
-    elsif ($k eq "start_position_long") { $g_startLon = $v; }
-    elsif ($k eq "end_position_lat") { $g_endLat = $v; }
-    elsif ($k eq "end_position_long") { $g_endLon = $v; }
-    elsif ($k eq "total_elapsed_time") { $g_totElapsTime = $v; }
-    elsif ($k eq "total_timer_time") { $g_totTimerTime = $v; }
-    elsif ($k eq "time_standing") { $g_totTimeStand = $v; } # invalid
-    elsif ($k eq "total_distance") { $g_totDistance = $v; } # m
-    elsif ($k eq "total_cycles") { $g_totCycles = $v; }
-    elsif ($k eq "total_calories") { $g_totCal = $v; }
-    elsif ($k eq "time_in_hr_zone") { $g_timeHrZone = $v; } # array
-    elsif ($k eq "avg_speed") { $g_avgSpeed = $v; }
-    elsif ($k eq "max_speed") { $g_maxSpeed = $v; }
-    elsif ($k eq "total_ascent") { $g_totAscent = $v; }
-    elsif ($k eq "total_descent") { $g_totDescent = $v; }
-    elsif ($k eq "avg_heart_rate") { $g_avgHr = $v; }
-    elsif ($k eq "max_heart_rate") { $g_maxHr = $v; }
-    elsif ($k eq "avg_cadence") { $g_avgCad = $v; }
-    elsif ($k eq "max_cadence") { $g_maxCad = $v; }
-    elsif ($k eq "avg_power") { $g_avgPower = $v; } # invalid
-    elsif ($k eq "max_power") { $g_maxPower = $v; } # invalid
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "start_time") { $g_startTime = $v; } # + $timeoffs; }
+      elsif ($k eq "sport") { $g_sport = $v; }
+      elsif ($k eq "sub_sport") { $g_subSport = $v; }
+      elsif ($k eq "start_position_lat") { $g_startLat = $v; }
+      elsif ($k eq "start_position_long") { $g_startLon = $v; }
+      elsif ($k eq "end_position_lat") { $g_endLat = $v; }
+      elsif ($k eq "end_position_long") { $g_endLon = $v; }
+      elsif ($k eq "total_elapsed_time") { $g_totElapsTime = $v; }
+      elsif ($k eq "total_timer_time") { $g_totTimerTime = $v; }
+      elsif ($k eq "time_standing") { $g_totTimeStand = $v; } # invalid
+      elsif ($k eq "total_distance") { $g_totDistance = $v; } # m
+      elsif ($k eq "total_cycles") { $g_totCycles = $v; }
+      elsif ($k eq "total_calories") { $g_totCal = $v; }
+      elsif ($k eq "time_in_hr_zone") { $g_timeHrZone = $v; } # array
+      elsif ($k eq "avg_speed") { $g_avgSpeed = $v; }
+      elsif ($k eq "max_speed") { $g_maxSpeed = $v; }
+      elsif ($k eq "total_ascent") { $g_totAscent = $v; }
+      elsif ($k eq "total_descent") { $g_totDescent = $v; }
+      elsif ($k eq "avg_heart_rate") { $g_avgHr = $v; }
+      elsif ($k eq "max_heart_rate") { $g_maxHr = $v; }
+      elsif ($k eq "avg_cadence") { $g_avgCad = $v; }
+      elsif ($k eq "max_cadence") { $g_maxCad = $v; }
+      elsif ($k eq "avg_power") { $g_avgPower = $v; } # invalid
+      elsif ($k eq "max_power") { $g_maxPower = $v; } # invalid
+    }
   }
+
+  # Fill in default values if no data found
+  $g_totElapsTime = 0 if !defined $g_totElapsTime; # ???
+  $g_totDistance = 0 if !defined $g_totDistance; # ???
 
   # Find additional/missing general info in first session
   $m = @{$sessions}[0];
-  %mh = %$m;
-  while (($k, $v) = each %mh) {
-    if ($k eq "start_time" && !defined $g_startTime)
-      { $g_startTime = $v; } # + $timeoffs; }
-    elsif ($k eq "sport" && !defined $g_sport)
-      { $g_sport = $v; }
-    elsif ($k eq "sub_sport" && !defined $g_subSport)
-      { $g_subSport = $v; }
-    elsif ($k eq "start_position_lat" && !defined $g_startLat)
-      { $g_startLat = $v; }
-    elsif ($k eq "start_position_long" && !defined $g_startLon)
-      { $g_startLon = $v; }
-    elsif ($k eq "total_elapsed_time" && !defined $g_totElapsTime)
-      { $g_totElapsTime = $v; }
-    elsif ($k eq "total_timer_time" && !defined $g_totTimerTime)
-      { $g_totTimerTime = $v; }
-    elsif ($k eq "time_standing" && !defined $g_totTimeStand)
-      { $g_totTimeStand = $v; } # invalid
-    elsif ($k eq "total_distance" && !defined $g_totDistance)
-      { $g_totDistance = $v; } # m
-    elsif ($k eq "total_cycles" && !defined $g_totCycles)
-      { $g_totCycles = $v; }
-    elsif ($k eq "total_calories" && !defined $g_totCal)
-      { $g_totCal = $v; }
-    elsif ($k eq "time_in_hr_zone" && !defined $g_timeHrZone)
-      { $g_timeHrZone = $v; } # array
-    elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
-      { $g_avgSpeed = $v; }
-    elsif ($k eq "max_speed" && !defined $g_maxSpeed)
-      { $g_maxSpeed = $v; }
-    elsif ($k eq "total_ascent" && !defined $g_totAscent)
-      { $g_totAscent = $v; }
-    elsif ($k eq "total_descent" && !defined $g_totDescent)
-      { $g_totDescent = $v; }
-    elsif ($k eq "avg_heart_rate" && !defined $g_avgHr)
-      { $g_avgHr = $v; }
-    elsif ($k eq "max_heart_rate" && !defined $g_maxHr)
-      { $g_maxHr = $v; }
-    elsif ($k eq "avg_cadence" && !defined $g_avgCad)
-      { $g_avgCad = $v; }
-    elsif ($k eq "max_cadence" && !defined $g_maxCad)
-      { $g_maxCad = $v; }
-    elsif ($k eq "avg_power" && !defined $g_avgPower)
-      { $g_avgPower = $v; } # invalid
-    elsif ($k eq "max_power" && !defined $g_maxPower)
-      { $g_maxPower = $v; } # invalid
+  if (defined $m) {
+    %mh = %$m;
+    while (($k, $v) = each %mh) {
+      if ($k eq "start_time" && !defined $g_startTime)
+        { $g_startTime = $v; } # + $timeoffs; }
+      elsif ($k eq "sport" && !defined $g_sport)
+        { $g_sport = $v; }
+      elsif ($k eq "sub_sport" && !defined $g_subSport)
+        { $g_subSport = $v; }
+      elsif ($k eq "start_position_lat" && !defined $g_startLat)
+        { $g_startLat = $v; }
+      elsif ($k eq "start_position_long" && !defined $g_startLon)
+        { $g_startLon = $v; }
+      elsif ($k eq "total_elapsed_time" && !defined $g_totElapsTime)
+        { $g_totElapsTime = $v; }
+      elsif ($k eq "total_timer_time" && !defined $g_totTimerTime)
+        { $g_totTimerTime = $v; }
+      elsif ($k eq "time_standing" && !defined $g_totTimeStand)
+        { $g_totTimeStand = $v; } # invalid
+      elsif ($k eq "total_distance" && !defined $g_totDistance)
+        { $g_totDistance = $v; } # m
+      elsif ($k eq "total_cycles" && !defined $g_totCycles)
+        { $g_totCycles = $v; }
+      elsif ($k eq "total_calories" && !defined $g_totCal)
+        { $g_totCal = $v; }
+      elsif ($k eq "time_in_hr_zone" && !defined $g_timeHrZone)
+        { $g_timeHrZone = $v; } # array
+      elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
+        { $g_avgSpeed = $v; }
+      elsif ($k eq "max_speed" && !defined $g_maxSpeed)
+        { $g_maxSpeed = $v; }
+      elsif ($k eq "total_ascent" && !defined $g_totAscent)
+        { $g_totAscent = $v; }
+      elsif ($k eq "total_descent" && !defined $g_totDescent)
+        { $g_totDescent = $v; }
+      elsif ($k eq "avg_heart_rate" && !defined $g_avgHr)
+        { $g_avgHr = $v; }
+      elsif ($k eq "max_heart_rate" && !defined $g_maxHr)
+        { $g_maxHr = $v; }
+      elsif ($k eq "avg_cadence" && !defined $g_avgCad)
+        { $g_avgCad = $v; }
+      elsif ($k eq "max_cadence" && !defined $g_maxCad)
+        { $g_maxCad = $v; }
+      elsif ($k eq "avg_power" && !defined $g_avgPower)
+        { $g_avgPower = $v; } # invalid
+      elsif ($k eq "max_power" && !defined $g_maxPower)
+        { $g_maxPower = $v; } # invalid
+    }
   }
 
   # Fill in default values if no data found
@@ -742,7 +755,8 @@ sub Waverage {
 #==============================================================================
 # Calculate median value of an array
 sub Median {
-  sum( ( sort { $a <=> $b } @_ )[ int( $#_/2 ), ceil( $#_/2 ) ] )/2;
+  my $len = scalar @_;
+  $len ? sum( ( sort { $a <=> $b } @_ )[ int( $#_/2 ), ceil( $#_/2 ) ] )/2 : 0;
 } # Median
 
 #==============================================================================
@@ -907,48 +921,67 @@ sub PrintSlfGeneralInfo {
   printf "%s<manualTemperature>%g</manualTemperature>\n",
     $indent x 2, 0; # ???
 
+  # Fix unprocessed min/max values
+  my $minAlt; my $maxAlt;
+  $minAlt = $g_minAlt == 10000 ? 0 : $g_minAlt;
+  $maxAlt = $g_maxAlt == -10000 ? 0 : $g_maxAlt;
+  my $minHr; my $maxHr;
+  $minHr = $g_minHr == 10000 ? 0 : $g_minHr;
+  $maxHr = $g_maxHr == -10000 ? 0 : $g_maxHr;
+  my $minTemp; my $maxTemp;
+  $minTemp = $g_minTemp == 10000 ? 0 : $g_minTemp;
+  $maxTemp = $g_maxTemp == -10000 ? 0 : $g_maxTemp;
+  my $minIncl; my $maxIncl;
+  $minIncl = $g_minIncl == 10000 ? 0 : $g_minIncl;
+  $maxIncl = $g_maxIncl == -10000 ? 0 : $g_maxIncl;
+  my $minPower; my $maxPower;
+  $minPower = $g_minPower == 10000 ? 0 : $g_minPower;
+  $maxPower = $g_maxPower == -10000 ? 0 : $g_maxPower;
+  my $minRiseRate; my $maxRiseRate;
+  $minRiseRate = $g_minRiseRate == 10000 ? 0 : $g_minRiseRate;
+  $maxRiseRate = $g_maxRiseRate == -10000 ? 0 : $g_maxRiseRate;
+
   printf "%s<maximumAltitude>%.1f</maximumAltitude>\n",
-    $indent x 2, $g_maxAlt * 1000; # mm
+    $indent x 2, $maxAlt * 1000; # mm
   printf "%s<maximumCadence>%d</maximumCadence>\n",
     $indent x 2, $g_maxCad;
   printf "%s<maximumHeartrate>%d</maximumHeartrate>\n",
-    $indent x 2, $g_maxHr;
+    $indent x 2, $maxHr;
   printf "%s<maximumIncline>%g</maximumIncline>\n",
-    $indent x 2, $g_maxIncl * 100; # %
+    $indent x 2, $maxIncl * 100; # %
   printf "%s<maximumInclineDownhill>%g</maximumInclineDownhill>\n",
-    $indent x 2, $g_minIncl * 100; # %, approx???
+    $indent x 2, $minIncl * 100; # %, approx???
   printf "%s<maximumInclineUphill>%g</maximumInclineUphill>\n",
-    $indent x 2, $g_maxIncl * 100; # %, approx???
+    $indent x 2, $maxIncl * 100; # %, approx???
 
-  if ($g_hrMax != 0) { $pcHrMax = $g_maxHr / $g_hrMax * 100; }
+  if ($g_hrMax != 0) { $pcHrMax = $maxHr / $g_hrMax * 100; }
   else { $pcHrMax = 0.0; }
   printf "%s<maximumPercentHRMax>%.1f</maximumPercentHRMax>\n",
     $indent x 2, $pcHrMax;
 
-  $g_maxPower = 0 if !defined $g_maxPower;
   printf "%s<maximumPower>%d</maximumPower>\n",
-    $indent x 2, $g_maxPower;
+    $indent x 2, $maxPower;
 
   printf "%s<maximumRiseRate>%.1f</maximumRiseRate>\n",
-    $indent x 2, $g_maxRiseRate * 1000; # mm
+    $indent x 2, $maxRiseRate * 1000; # mm
   printf "%s<maximumSpeed>%.1f</maximumSpeed>\n",
     $indent x 2, $g_maxSpeed / 3.6; # m/s
   printf "%s<maximumTemperature>%.1f</maximumTemperature>\n",
-    $indent x 2, $g_maxTemp;
+    $indent x 2, $maxTemp;
 
   printf "%s<measurement>%s</measurement>\n",
     $indent x 2, "kmh";
 
   printf "%s<minimumAltitude>%d</minimumAltitude>\n",
-    $indent x 2, $g_minAlt * 1000; # mm
+    $indent x 2, $minAlt * 1000; # mm
   printf "%s<minimumCadence>%d</minimumCadence>\n",
     $indent x 2, 0; # always zero???
   printf "%s<minimumHeartrate>%d</minimumHeartrate>\n",
-    $indent x 2, $g_minHr;
+    $indent x 2, $minHr;
   printf "%s<minimumIncline>%.1f</minimumIncline>\n",
-    $indent x 2, $g_minIncl * 100; # %, zero???
+    $indent x 2, $minIncl * 100; # %, zero???
 
-  if ($g_hrMax != 0) { $pcHrMax = $g_minHr / $g_hrMax * 100; }
+  if ($g_hrMax != 0) { $pcHrMax = $minHr / $g_hrMax * 100; }
   else { $pcHrMax = 0.0; }
   printf "%s<minimumPercentHRMax>%.1f</minimumPercentHRMax>\n",
     $indent x 2, $pcHrMax;
@@ -956,11 +989,11 @@ sub PrintSlfGeneralInfo {
   printf "%s<minimumPower>%d</minimumPower>\n",
     $indent x 2, 0; # always zero???
   printf "%s<minimumRiseRate>%.1f</minimumRiseRate>\n",
-    $indent x 2, $g_minRiseRate * 1000; # mm
+    $indent x 2, $minRiseRate * 1000; # mm
   printf "%s<minimumSpeed>%d</minimumSpeed>\n",
     $indent x 2, 0 / 3.6; # m/s, always zero???
   printf "%s<minimumTemperature>%.1f</minimumTemperature>\n",
-    $indent x 2, $g_minTemp;
+    $indent x 2, $minTemp;
 
   printf "%s<name><![CDATA[%s]]></name>\n",
     $indent x 2, $g_trackName;
@@ -1200,6 +1233,7 @@ sub PrintSlfEntries {
   # Initiliaze some global vars
   $g_distDownhill = 0; $g_distUphill = 0;
   $g_timeDownhill = 0; $g_timeUphill = 0;
+  $g_pauseTime = 0;
   $g_timeInTargetZone = 0;
   $g_timeOverTargetZone = 0; $g_timeUnderTargetZone = 0;
   $g_timeInIntZone1 = 0; $g_timeInIntZone2 = 0;

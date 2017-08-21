@@ -5596,6 +5596,7 @@ sub fetch_data_message {
   if (ref $cb eq 'ARRAY') {
     $v[0] & $rechd_mask_compressed_timestamp_header and push @v, $self->last_timestamp + ($v[0] & $rechd_mask_cth_timestamp);
     $cb->[0]->($self, $desc, \@v, @$cb[1 .. $#$cb]);
+    1;
   }
   else {
     1;
