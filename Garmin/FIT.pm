@@ -43,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.27;
+$version = 0.28;
 $version_major_scale = 100;
 
 sub version_major {
@@ -5110,10 +5110,11 @@ sub undocumented_field_name {
 sub syscallback_devdata_id {
   my ($self, $desc, $v) = @_;
   my ($i_id, $T_id, $c_id, $i_index) = @$desc{qw(i_application_id T_application_id c_application_id i_developer_data_index)};
-  my $emsg;
+  my ($emsg, $warn);
 
   if (!defined $i_id) {
     $emsg = "no application_id";
+    $warn = 1;
   }
   elsif ($T_id != FIT_UINT8 && $T_id != FIT_BYTE) {
     $emsg = "base type of application_id is $type_name[$T_id] ($T_id)";
@@ -5123,8 +5124,13 @@ sub syscallback_devdata_id {
   }
 
   if ($emsg ne '') {
-    $self->error("Broken developer data id message ($emsg)");
-    return undef;
+    if ($warn) {
+      $self->error("suspicious developer data id message ($emsg)");
+    }
+    else {
+      $self->error("broken developer data id message ($emsg)");
+      return undef;
+    }
   }
 
   my $devdata_by_index = $self->{devdata_by_index};
@@ -5159,7 +5165,7 @@ sub syscallback_devdata_field_desc {
                 i_fit_base_type_id T_fit_base_type_id I_fit_base_type_id
                 i_field_name T_field_name c_field_name)};
 
-  my $emsg;
+  my ($emsg, $warn, $o_name);
 
   if (!defined $i_index) {
     $emsg = 'no developer_data_index';
@@ -5175,14 +5181,24 @@ sub syscallback_devdata_field_desc {
   }
   elsif (!defined $i_field_name) {
     $emsg = 'no field_name';
+    $warn = 1;
   }
   elsif ($T_field_name != FIT_STRING || $c_field_name <= 0) {
     $emsg = "field_name is not a non-empty string";
+    $warn = 1;
+  }
+  else {
+    $o_name = $self->string_value($v, $i_field_name, $c_field_name);
   }
 
   if ($emsg ne '') {
-    $self->error("broken field description message ($emsg)");
-    return undef;
+    if ($warn) {
+      $self->error("suspicious field description message ($emsg)");
+    }
+    else {
+      $self->error("broken field description message ($emsg)");
+      return undef;
+    }
   }
 
   my $base_type = $v->[$i_base_type_id];
@@ -5240,17 +5256,12 @@ sub syscallback_devdata_field_desc {
 
   ref $field_desc_by_name eq 'HASH' or $field_desc_by_name = $devdata->{field_desc_by_name} = +{};
 
-  my $o_name = $self->string_value($v, $i_field_name, $c_field_name);
-
-  if ($o_name eq '') {
-    $self->error("name of field $index/$num is null");
-    return undef;
-  }
-
   my $name = $o_name;
 
-  $name =~ s/\s+/_/g;
-  $name =~ s/\W/sprintf('_%02x_', ord($&))/ge;
+  if (defined $name) {
+    $name =~ s/\s+/_/g;
+    $name =~ s/\W/sprintf('_%02x_', ord($&))/ge;
+  }
 
   my %fdesc =
     (
@@ -5283,8 +5294,8 @@ sub syscallback_devdata_field_desc {
     }
   }
 
+  defined $name and $field_desc_by_name->{$name} = \%fdesc;
   $field_desc_by_num->{$num} = \%fdesc;
-  $field_desc_by_name->{$name} = \%fdesc;
 }
 
 sub add_endian_converter {
@@ -5596,7 +5607,6 @@ sub fetch_data_message {
   if (ref $cb eq 'ARRAY') {
     $v[0] & $rechd_mask_compressed_timestamp_header and push @v, $self->last_timestamp + ($v[0] & $rechd_mask_cth_timestamp);
     $cb->[0]->($self, $desc, \@v, @$cb[1 .. $#$cb]);
-    1;
   }
   else {
     1;
@@ -6653,6 +6663,24 @@ The author is very grateful to Garmin for supplying us free software programers 
 which includes detailed documetation about its proprietary file format.
 
 =head1 CHANGES
+
+=head2 0.27 --E<gt> 0.28
+
+=over 4
+
+=item C<syscallback_devdata_id()>
+
+C<application_id> field is not mandatory.
+
+Thanks to the analysis by Matjaz Rihtar.
+
+=item C<syscallback_devdata_field_desc()>
+
+C<field_name> field is not mandatory.
+
+Thanks to the analysis by Matjaz Rihtar.
+
+=back
 
 =head2 0.26 --E<gt> 0.27
 
