@@ -1,5 +1,8 @@
 #! /usr/bin/perl -s
 
+use FindBin;
+use lib $FindBin::RealBin;
+
 use Garmin::FIT;
 
 $use_gmtime = 0 if !defined $use_gmtime;
