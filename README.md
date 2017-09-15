@@ -225,5 +225,5 @@ are named as ```xxx<field_number>```.
 [Garmin's Track Point Extension Format v1]: http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd
 [Cluetrust GPX Extension Format]: http://www.cluetrust.com/Schemas/gpxdata10.xsd
 [Validation of a Mathematical Model for Road Cycling Power]: http://www.wisil.recumbents.com/wisil/MartinDocs/Validation%20of%20a%20mathematical%20model%20for%20road%20cycling.pdf
-[SigmaSport Data Center]: http://www.sigma-data-center.com/eu/en/cmsDataCenter/1/0/0/0/data-center.html?scriptMode=cmsdatacenter
+[SigmaSport Data Center]: http://www.sigmasport.com/en/produkte/software/software/apps/data-center
 <!-- http://dcupdate.sigmasport.com/en/hinweis/ -->

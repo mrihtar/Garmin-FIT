@@ -91,5 +91,5 @@ should be taken with a grain of salt (= don't trust it).
 
 [Windows **ini** format]: http://en.wikipedia.org/wiki/INI_file
 [HUNT 2012]: https://helseforskning.etikkom.no/ikbViewer/Content/345409/NES%20et%20al,%202012_HR_HUNTsms1445[1].pdf
-[Wattbike]: https://wattbike.com/uk/functional-threshold-power
+[Wattbike]: https://support.wattbike.com/hc/en-us/articles/115001848349-Functional-Threshold-Power-FTP-Training-Zones
 [TrainingPeaks]: http://home.trainingpeaks.com/blog/article/what-is-threshold-power
