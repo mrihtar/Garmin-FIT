@@ -26,8 +26,8 @@ my $g_minAlt = 10000;
 my $g_maxAlt = -10000;
 my $alts = [];
 my $g_minHr = 10000;
-my $g_maxHr = -10000; # already in lap data
-my $hrs = []; # already in lap data
+my $g_maxHr = -10000; # already in session/lap data
+my $hrs = []; # already in session/lap data
 my $g_minTemp = 10000;
 my $g_maxTemp = -10000;
 my $temps = [];
@@ -112,7 +112,7 @@ my $g_pcf = 0.65;
 my $g_kcf = 0.65;
 
 # Totals/summary info (from lap/session)
-my $g_startTime = time(); # use current time if start_time not found
+my $g_startTime;
 my $f_startTime = ""; # start time in proper format
 my $g_startLon; my $g_startLat;
 # endLon and endLat are not present in session!
@@ -209,7 +209,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.10  Copyright (c) 2016-2017 Matjaz Rihtar  (Aug 21, 2017)\n";
+    printf STDERR "fit2slf 2.11  Copyright (c) 2016-2017 Matjaz Rihtar  (Nov 5, 2017)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -257,7 +257,11 @@ sub ReadFitFile {
 
   # Open and read fit file
   $fit->open() or die $fit->error()."\n";
-  $fit->fetch_header() or die $fit->error()."\n";
+  my ($f_size) = $fit->fetch_header();
+  if (!defined $f_size) {
+    if (!defined $fit->error()) { $fit->error("can't read FIT header"); }
+    die $fit->error()."\n";
+  }
   1 while $fit->fetch();
 } # ReadFitFile
 
@@ -335,7 +339,7 @@ sub FillGlobalVars {
     }
   }
 
-  # override manufacturer and product (required by Sigma Data Center)
+  # Override manufacturer and product (required by Sigma Data Center)
   $g_manuf = "SigmaSport";
   $g_product = "rox100";
   $g_serial = 1952031142 if !defined $g_serial; # any serial is OK
@@ -422,18 +426,16 @@ sub FillGlobalVars {
   $g_pZone7s = $g_funcThresPower * $pc_pZone7s;
   $g_pZone7e = $g_pZoneMax;
 
-  # Find all needed general info in first lap
-  $m = @{$laps}[0];
+  # Find all needed general info in first session
+  $m = @{$sessions}[0];
   if (defined $m) {
     %mh = %$m;
     while (($k, $v) = each %mh) {
-      if ($k eq "start_time") { $g_startTime = $v; } # + $timeoffs; }
+      if ($k eq "start_time") { $g_startTime = $v; } # + $timeoffs;
       elsif ($k eq "sport") { $g_sport = $v; }
       elsif ($k eq "sub_sport") { $g_subSport = $v; }
       elsif ($k eq "start_position_lat") { $g_startLat = $v; }
       elsif ($k eq "start_position_long") { $g_startLon = $v; }
-      elsif ($k eq "end_position_lat") { $g_endLat = $v; }
-      elsif ($k eq "end_position_long") { $g_endLon = $v; }
       elsif ($k eq "total_elapsed_time") { $g_totElapsTime = $v; }
       elsif ($k eq "total_timer_time") { $g_totTimerTime = $v; }
       elsif ($k eq "time_standing") { $g_totTimeStand = $v; } # invalid
@@ -454,59 +456,61 @@ sub FillGlobalVars {
     }
   }
 
-  # Fill in default values if no data found
-  $g_totElapsTime = 0 if !defined $g_totElapsTime; # ???
-  $g_totDistance = 0 if !defined $g_totDistance; # ???
-
-  # Find additional/missing general info in first session
-  $m = @{$sessions}[0];
-  if (defined $m) {
-    %mh = %$m;
-    while (($k, $v) = each %mh) {
-      if ($k eq "start_time" && !defined $g_startTime)
-        { $g_startTime = $v; } # + $timeoffs; }
-      elsif ($k eq "sport" && !defined $g_sport)
-        { $g_sport = $v; }
-      elsif ($k eq "sub_sport" && !defined $g_subSport)
-        { $g_subSport = $v; }
-      elsif ($k eq "start_position_lat" && !defined $g_startLat)
-        { $g_startLat = $v; }
-      elsif ($k eq "start_position_long" && !defined $g_startLon)
-        { $g_startLon = $v; }
-      elsif ($k eq "total_elapsed_time" && !defined $g_totElapsTime)
-        { $g_totElapsTime = $v; }
-      elsif ($k eq "total_timer_time" && !defined $g_totTimerTime)
-        { $g_totTimerTime = $v; }
-      elsif ($k eq "time_standing" && !defined $g_totTimeStand)
-        { $g_totTimeStand = $v; } # invalid
-      elsif ($k eq "total_distance" && !defined $g_totDistance)
-        { $g_totDistance = $v; } # m
-      elsif ($k eq "total_cycles" && !defined $g_totCycles)
-        { $g_totCycles = $v; }
-      elsif ($k eq "total_calories" && !defined $g_totCal)
-        { $g_totCal = $v; }
-      elsif ($k eq "time_in_hr_zone" && !defined $g_timeHrZone)
-        { $g_timeHrZone = $v; } # array
-      elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
-        { $g_avgSpeed = $v; }
-      elsif ($k eq "max_speed" && !defined $g_maxSpeed)
-        { $g_maxSpeed = $v; }
-      elsif ($k eq "total_ascent" && !defined $g_totAscent)
-        { $g_totAscent = $v; }
-      elsif ($k eq "total_descent" && !defined $g_totDescent)
-        { $g_totDescent = $v; }
-      elsif ($k eq "avg_heart_rate" && !defined $g_avgHr)
-        { $g_avgHr = $v; }
-      elsif ($k eq "max_heart_rate" && !defined $g_maxHr)
-        { $g_maxHr = $v; }
-      elsif ($k eq "avg_cadence" && !defined $g_avgCad)
-        { $g_avgCad = $v; }
-      elsif ($k eq "max_cadence" && !defined $g_maxCad)
-        { $g_maxCad = $v; }
-      elsif ($k eq "avg_power" && !defined $g_avgPower)
-        { $g_avgPower = $v; } # invalid
-      elsif ($k eq "max_power" && !defined $g_maxPower)
-        { $g_maxPower = $v; } # invalid
+  if (scalar @$laps <= 1) {
+    # Find additional/missing general info in first (and only) lap
+    $m = @{$laps}[0];
+    if (defined $m) {
+      %mh = %$m;
+      while (($k, $v) = each %mh) {
+        if ($k eq "start_time" && !defined $g_startTime)
+          { $g_startTime = $v; } # + $timeoffs;
+        elsif ($k eq "sport" && !defined $g_sport)
+          { $g_sport = $v; }
+        elsif ($k eq "sub_sport" && !defined $g_subSport)
+          { $g_subSport = $v; }
+        elsif ($k eq "start_position_lat" && !defined $g_startLat)
+          { $g_startLat = $v; }
+        elsif ($k eq "start_position_long" && !defined $g_startLon)
+          { $g_startLon = $v; }
+        elsif ($k eq "end_position_lat" && !defined $g_endLat)
+          { $g_endLat = $v; }
+        elsif ($k eq "end_position_long" && !defined $g_endLon)
+          { $g_endLon = $v; }
+        elsif ($k eq "total_elapsed_time" && !defined $g_totElapsTime)
+          { $g_totElapsTime = $v; }
+        elsif ($k eq "total_timer_time" && !defined $g_totTimerTime)
+          { $g_totTimerTime = $v; }
+        elsif ($k eq "time_standing" && !defined $g_totTimeStand)
+          { $g_totTimeStand = $v; } # invalid
+        elsif ($k eq "total_distance" && !defined $g_totDistance)
+          { $g_totDistance = $v; } # m
+        elsif ($k eq "total_cycles" && !defined $g_totCycles)
+          { $g_totCycles = $v; }
+        elsif ($k eq "total_calories" && !defined $g_totCal)
+          { $g_totCal = $v; }
+        elsif ($k eq "time_in_hr_zone" && !defined $g_timeHrZone)
+          { $g_timeHrZone = $v; } # array
+        elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
+          { $g_avgSpeed = $v; }
+        elsif ($k eq "max_speed" && !defined $g_maxSpeed)
+          { $g_maxSpeed = $v; }
+        elsif ($k eq "total_ascent" && !defined $g_totAscent)
+          { $g_totAscent = $v; }
+        elsif ($k eq "total_descent" && !defined $g_totDescent)
+          { $g_totDescent = $v; }
+        elsif ($k eq "avg_heart_rate" && !defined $g_avgHr)
+          { $g_avgHr = $v; }
+        elsif ($k eq "max_heart_rate" && !defined $g_maxHr)
+          { $g_maxHr = $v; }
+        elsif ($k eq "avg_cadence" && !defined $g_avgCad)
+          { $g_avgCad = $v; }
+        elsif ($k eq "max_cadence" && !defined $g_maxCad)
+          { $g_maxCad = $v; }
+        elsif ($k eq "avg_power" && !defined $g_avgPower)
+          { $g_avgPower = $v; } # invalid
+        elsif ($k eq "max_power" && !defined $g_maxPower)
+          { $g_maxPower = $v; } # invalid
+      }
     }
   }
 
@@ -515,6 +519,8 @@ sub FillGlobalVars {
   $g_startLon = 0 if !defined $g_startLon;
   $g_endLat = 0 if !defined $g_endLat;
   $g_endLon = 0 if !defined $g_endLon;
+  $g_totElapsTime = 0 if !defined $g_totElapsTime;
+  $g_totDistance = 0 if !defined $g_totDistance;
   $g_totCal = 0 if !defined $g_totCal;
   $g_avgSpeed = 0 if !defined $g_avgSpeed;
   $g_maxSpeed = 0 if !defined $g_maxSpeed;
@@ -766,6 +772,7 @@ sub Median {
 sub PrintSlfHeader {
   my @wday = qw(Sun Mon Tue Wed Thu Fri Sat);
   my @mon = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
+  $g_startTime = time() if !defined $g_startTime;
   my @lt = localtime($g_startTime);
 
 # Don't use POSIX::strftime("%a %b %e %T GMT%z %Y", @lt) because of locale
@@ -1115,6 +1122,25 @@ sub PrintSlfGeneralInfo {
 } # PrintSlfGeneralInfo
 
 #==============================================================================
+# Get 1st altitude from records. If not found, return home altitude.
+sub Get1stAlt {
+  my $timestamp = undef;
+  my $alt = undef;
+
+  foreach (@$records) {
+    my $k; my $v;
+    while (($k, $v) = each %$_) {
+      if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
+      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
+    }
+    last; # check only 1st record
+  }
+  if (!defined $alt) { $alt = $g_homeAlt; }
+
+  return $alt;
+} # Get1stAlt
+
+#==============================================================================
 # Simple Kalman filtering routines (used as low-pass filter) for smoothing data
 sub kalman_init {
   my ($state, $q, $r, $p, $initial_value) = @_;
@@ -1154,6 +1180,7 @@ sub kalman_update {
 # 2 positions.
 # Displaying the comparison graph is possible, if code at the end is uncommented.
 sub FilterAlt {
+  my $priv_alt = shift; # initial/home altitude
   my $k; my $v;
 
   # q = bigger (>4) => more precisely follows the original curve
@@ -1162,8 +1189,8 @@ sub FilterAlt {
   #     smaller (0.1) => exactly follows original curve
   # q & r stay the same, p & x are overwritten in each step
   # p = same as r
-  # initial_value = home altitude
-  kalman_init(\%alt_state, 1, 15, 1, $g_homeAlt);
+  # initial_value = initial/home altitude
+  kalman_init(\%alt_state, 1, 15, 1, $priv_alt);
 
   my $timestamp;
   my $alt; my $altf;
@@ -1171,13 +1198,12 @@ sub FilterAlt {
   my $times = [];
   $orig_alt = [];
   $filt_alt = [];
-  my $priv_alt = $g_homeAlt;
   foreach (@$records) {
     $timestamp = undef;
     $alt = undef;
 
     while (($k, $v) = each %$_) {
-      if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
+      if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
       elsif ($k eq "altitude") { $alt = $v; } # can be invalid
     }
     if (!defined $alt) { $alt = $priv_alt; }
@@ -1248,14 +1274,15 @@ sub PrintSlfEntries {
   $prev_lat = 0; $prev_lon = 0; # undef
   @prev_dist = (0) x $histSize;
   @prev_distDiff = (0) x $histSize;
-  @prev_alt =  ($g_homeAlt) x $histSize; # home altitude
+  my $alt0 = Get1stAlt(); # initial/home altitude
+  @prev_alt =  ($alt0) x $histSize;
   @prev_altDiff =  (0) x $histSize;
   $prev_speed = 0; $prev_hr = 0; # undef
   $prev_cad = 0; $prev_temp = 0; # undef
   $tot_time = 0;
 
-  FilterAlt();
-# kalman_init(\%pwr_state, 2, 25, 1, 0);
+  FilterAlt($alt0);
+# kalman_init(\%pwr_state, 2, 25, 1, $alt0);
 
   my $fai = 0; # filtered alt index
   foreach (@$records) {
@@ -1282,7 +1309,7 @@ sub PrintSlfEntry {
 
   my $k; my $v;
   while (($k, $v) = each %mh) {
-    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs; }
+    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
