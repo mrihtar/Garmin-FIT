@@ -209,7 +209,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.11  Copyright (c) 2016-2017 Matjaz Rihtar  (Nov 5, 2017)\n";
+    printf STDERR "fit2slf 2.12  Copyright (c) 2016-2019 Matjaz Rihtar  (Mar 11, 2019)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -1322,8 +1322,8 @@ sub PrintSlfEntry {
   }
 
   # Fill in default values if no data found
-  $lat = 0 if !defined $lat;
-  $lon = 0 if !defined $lon;
+  return if !defined $lat;
+  return if !defined $lon;
 
   if (defined $timestamp) {
     printf "%s<Entry", $indent x 2;
