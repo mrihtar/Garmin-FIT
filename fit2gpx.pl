@@ -160,6 +160,7 @@ my $filt_alt = [];
 # Command line parsing
 my $overwrite = 0;
 my $fpcalc = 0; # force power calculation
+my $zeroll = 0; # allow zero values for latitude/longitude if not present
 my $garmin_ext = 1; # 0 means cluetrust_ext
 my $rev_coord = 0;  # default: lat=... lon=...
 my $file;
@@ -169,6 +170,7 @@ foreach (@ARGV) {
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
   elsif ($arg eq "-p") { $fpcalc = 1; }
+  elsif ($arg eq "-z") { $zeroll = 1; }
   elsif ($arg eq "-g") { $garmin_ext = 1; }
   elsif ($arg eq "-c") { $garmin_ext = 0; }
   elsif ($arg eq "-r") { $rev_coord = 1; }
@@ -220,17 +222,19 @@ sub Usage {
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-g|-c] [-r] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] [-g|-c] [-r] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
     printf STDERR "  -p  Force power calculation (default: use fit power data if present)\n";
+    printf STDERR "  -z  Allow zero values for latitude/longitude if not present\n";
+    printf STDERR "      (default: ignore records with no latitude/longitude)\n";
     printf STDERR "  -g  Use Garmin extension format for hr/cad/temp (default)\n";
     printf STDERR "      <gpxtpx:TrackPointExtension>, <gpxtpx:...>: atemp, hr, cad\n";
     printf STDERR "  -c  Use Cluetrust extension format for hr/cad/temp\n";
     printf STDERR "      <gpxdata:...>: temp, hr, cadence\n";
     printf STDERR "  -r  Reverse print of lat and lon in trkpt entries\n";
-    printf STDERR "      Default: <trkpt lat=... lon=...>\n";
+    printf STDERR "      (default: <trkpt lat=... lon=...>)\n";
   }
   _exit(1);
 } # Usage
@@ -533,6 +537,7 @@ sub FillGlobalVars {
   $g_startTime = time() if !defined $g_startTime;
   my @lt = localtime($g_startTime);
   $f_startTime = POSIX::strftime("%d-%b-%y %H:%M", @lt);
+  $g_totElapsTime = 0 if !defined $g_totElapsTime;
 
   $g_trackName = "Track ".$f_startTime;
   my $product = ucfirst $g_product;
@@ -1029,8 +1034,8 @@ sub ProcessRecord {
   }
 
   # Fill in default values if no data found
-  return if !defined $lat;
-  return if !defined $lon;
+  if (!defined $lat) { $zeroll ? $lat = 0 : return; }
+  if (!defined $lon) { $zeroll ? $lon = 0 : return; }
 
   if (defined $timestamp) {
     if (!defined $lat) { $lat = $prev_lat; }
@@ -1148,7 +1153,9 @@ sub ProcessRecord {
     }
 
     # cal = % totCal +/- diff(hr, avgHr) % totCal
-    my $ct = $g_totCal*$time/$g_totElapsTime;
+    my $ct;
+    if ($g_totElapsTime != 0) { $ct = $g_totCal*$time/$g_totElapsTime; }
+    else { $ct = 0; }
     my $cal;
     if ($g_avgHr != 0) { $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct; }
     else { $cal = $ct; }
@@ -1461,8 +1468,8 @@ sub PrintGpxTrkpt {
   }
 
   # Fill in default values if no data found
-  return if !defined $lat;
-  return if !defined $lon;
+  if (!defined $lat) { $zeroll ? $lat = 0 : return; }
+  if (!defined $lon) { $zeroll ? $lon = 0 : return; }
   $ele = @{$orig_alt}[$ai] if !defined $ele; # from FilterAlt
 
   if (defined $timestamp) {

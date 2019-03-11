@@ -160,6 +160,7 @@ my $filt_alt = [];
 # Command line parsing
 my $overwrite = 0;
 my $fpcalc = 0; # force power calculation
+my $zeroll = 0; # allow zero values for latitude/longitude if not present
 my $file;
 foreach (@ARGV) {
   my $arg = $_;
@@ -167,6 +168,7 @@ foreach (@ARGV) {
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
   elsif ($arg eq "-p") { $fpcalc = 1; }
+  elsif ($arg eq "-z") { $zeroll = 1; }
   else { $file = $arg; }
 }
 
@@ -215,11 +217,13 @@ sub Usage {
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
     printf STDERR "  -p  Force power calculation (default: use fit power data if present)\n";
+    printf STDERR "  -z  Allow zero values for latitude/longitude if not present\n";
+    printf STDERR "      (default: ignore records with no latitude/longitude)\n";
   }
   _exit(1);
 } # Usage
@@ -515,6 +519,7 @@ sub FillGlobalVars {
   }
 
   # Fill in default values if no data found
+  $g_startTime = time() if !defined $g_startTime;
   $g_startLat = 0 if !defined $g_startLat;
   $g_startLon = 0 if !defined $g_startLon;
   $g_endLat = 0 if !defined $g_endLat;
@@ -772,7 +777,6 @@ sub Median {
 sub PrintSlfHeader {
   my @wday = qw(Sun Mon Tue Wed Thu Fri Sat);
   my @mon = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
-  $g_startTime = time() if !defined $g_startTime;
   my @lt = localtime($g_startTime);
 
 # Don't use POSIX::strftime("%a %b %e %T GMT%z %Y", @lt) because of locale
@@ -1322,8 +1326,8 @@ sub PrintSlfEntry {
   }
 
   # Fill in default values if no data found
-  return if !defined $lat;
-  return if !defined $lon;
+  if (!defined $lat) { $zeroll ? $lat = 0 : return; }
+  if (!defined $lon) { $zeroll ? $lon = 0 : return; }
 
   if (defined $timestamp) {
     printf "%s<Entry", $indent x 2;
@@ -1443,7 +1447,9 @@ sub PrintSlfEntry {
     }
 
     # cal = % totCal +/- diff(hr, avgHr) % totCal
-    my $ct = $g_totCal*$time/$g_totElapsTime;
+    my $ct;
+    if ($g_totElapsTime != 0) { $ct = $g_totCal*$time/$g_totElapsTime; }
+    else { $ct = 0; }
     my $cal;
     if ($g_avgHr != 0) { $cal = $ct + ($hr - $g_avgHr)/$g_avgHr*$ct; }
     else { $cal = $ct; }
