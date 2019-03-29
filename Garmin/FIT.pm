@@ -7608,7 +7608,7 @@ sub fetch {
       $desc_i = ($rechd & $rechd_mask_cth_local_message_type) >> $rechd_offset_cth_local_message_type;
     }
     elsif ($rechd & $rechd_mask_definition_message) {
-      $self->fetch_definition_message;
+      $self->fetch_definition_message || return undef;
     }
     else {
       $desc_i = $rechd & $rechd_mask_local_message_type;
@@ -7621,7 +7621,7 @@ sub fetch {
       my $desc = $self->data_message_descriptor->[$desc_i];
 
       if (ref $desc eq 'HASH') {
-        $self->fetch_data_message($desc);
+        $self->fetch_data_message($desc) || return undef;
       }
       else {
         $self->error(sprintf("%d at %ld: not defined", $rechd, $j));
