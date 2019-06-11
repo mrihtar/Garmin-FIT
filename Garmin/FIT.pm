@@ -6840,7 +6840,7 @@ sub syscallback_devdata_field_desc {
 
   my $base_type = $v->[$i_base_type_id];
 
-  if ($base_type == $I_base_type) {
+  if ($base_type == $I_base_type_id) {
     $self->error("invalid base type ($base_type)");
     return undef;
   }
