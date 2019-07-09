@@ -43,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.29;
+$version = 0.30;
 $version_major_scale = 100;
 
 sub version_major {
@@ -195,7 +195,7 @@ sub profile_version_from_string {
   }
 }
 
-$profile_version = &profile_version_from_string(undef, "20.72");
+$profile_version = &profile_version_from_string(undef, "20.94");
 @profile_version = &profile_version_major(undef, $profile_version);
 
 sub profile_version_string {
@@ -1484,7 +1484,7 @@ else {
      'whitewater' => 41, # kayaking/rafting
      'skate_skiing' => 42, # cross country skiing
      'yoga' => 43, # training
-     'pilates' => 44, # training
+     'pilates' => 44, # fitness equipment
      'indoor_running' => 45, # run/fitness equipment
      'gravel_cycling' => 46, # cycling
      'e_bike_mountain' => 47, # cycling
@@ -1937,6 +1937,10 @@ else {
      'johnson_health_tech' => 122,
      'polar_electro' => 123,
      'seesense' => 124,
+     'nci_technology' => 125,
+     'iqsquare' => 126,
+     'leomo' => 127,
+     'ifit_com' => 128,
      'development' => 255,
      'healthandlife' => 257,
      'lezyne' => 258,
@@ -1976,6 +1980,11 @@ else {
      'dabuziduo' => 292,
      'jetblack' => 293,
      'coros' => 294,
+     'virtugo' => 295,
+     'velosense' => 296,
+     'cycligentinc' => 297,
+     'trailforks' => 298,
+     'mahle_ebikemotion' => 299,
      'actigraphcorp' => 5759,
    },
 
@@ -2089,6 +2098,7 @@ else {
      'fr225' => 2153,
      'fr630' => 2156,
      'fr230' => 2157,
+     'fr735xt' => 2158,
      'vivo_active_apac' => 2160,
      'vector_2' => 2161,
      'vector_2s' => 2162,
@@ -2108,6 +2118,7 @@ else {
      'd2_bravo' => 2262,
      'approach_s20' => 2266,
      'varia_remote' => 2276,
+     'approach_x40' => 2292,
      'hrm4_run' => 2327,
      'vivo_active_hr' => 2337,
      'vivo_smart_gps_hr' => 2347,
@@ -2125,14 +2136,45 @@ else {
      'nautix' => 2496,
      'edge_820' => 2530,
      'edge_explore_820' => 2531,
+     'fr735xt_apac' => 2533,
+     'fr735xt_japan' => 2534,
      'fenix5s' => 2544,
      'd2_bravo_titanium' => 2547,
-     'varia_ut800' => 2567,
+     'varia_ut800' => 2567, # Varia UT 800 SW
      'running_dynamics_pod' => 2593,
      'fenix5x' => 2604,
      'vivo_fit_jr' => 2606,
+     'vivo_smart3' => 2622,
+     'vivo_sport' => 2623,
+     'approach_s60' => 2656,
+     'virb_360' => 2687,
      'fr935' => 2691,
      'fenix5' => 2697,
+     'vivoactive3' => 2700,
+     'foretrex_601_701' => 2769,
+     'vivo_move_hr' => 2772,
+     'edge_1030' => 2713,
+     'approach_z80' => 2806,
+     'vivo_smart3_apac' => 2831,
+     'vivo_sport_apac' => 2832,
+     'descent' => 2859,
+     'fr645' => 2886,
+     'fr645m' => 2888,
+     'fenix5s_plus' => 2900,
+     'Edge_130' => 2909,
+     'vivosmart_4' => 2927,
+     'approach_x10' => 2962,
+     'vivoactive3m_w' => 2988,
+     'edge_explore' => 3011,
+     'gpsmap66' => 3028,
+     'approach_s10' => 3049,
+     'vivoactive3m_l' => 3066,
+     'approach_g80' => 3085,
+     'fenix5_plus' => 3110,
+     'fenix5x_plus' => 3111,
+     'edge_520_plus' => 3112,
+     'hrm_dual' => 3299, # HRM-Dual
+     'approach_s40' => 3314,
      'sdm4' => 10007, # SDM4 footpod
      'edge_remote' => 10014,
      'training_center' => 20119,
@@ -2164,6 +2206,7 @@ else {
      'bike_light_shared' => 36,
      'exd' => 38,
      'bike_radar' => 40,
+     'bike_aero' => 46,
      'weight_scale' => 119,
      'heart_rate' => 120,
      'bike_speed_cadence' => 121,
@@ -3302,6 +3345,33 @@ else {
      'overhead_walk' => 43,
      'inchworm' => 44,
      'weighted_modified_front_lever' => 45,
+     'russian_twist' => 46,
+     'abdominal_leg_rotations' => 47,
+     'arm_and_leg_extension_on_knees' => 48,
+     'bicycle' => 49,
+     'bicep_curl_with_leg_extension' => 50,
+     'cat_cow' => 51,
+     'corkscrew' => 52,
+     'criss_cross' => 53,
+     'criss_cross_with_ball' => 54,
+     'double_leg_stretch' => 55,
+     'knee_folds' => 56,
+     'lower_lift' => 57,
+     'neck_pull' => 58,
+     'pelvic_clocks' => 59,
+     'roll_over' => 60,
+     'roll_up' => 61,
+     'rolling' => 62,
+     'rowing_1' => 63,
+     'rowing_2' => 64,
+     'scissors' => 65,
+     'single_leg_circles' => 66,
+     'single_leg_stretch' => 67,
+     'snake_twist_1_and_2' => 68,
+     'swan' => 69,
+     'swimming' => 70,
+     'teaser' => 71,
+     'the_hundred' => 72,
    },
    'crunch_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -3389,6 +3459,7 @@ else {
      'toes_to_bar' => 81,
      'weighted_toes_to_bar' => 82,
      'crunch' => 83,
+     'straight_leg_crunch_with_ball' => 84,
    },
    'curl_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -3469,6 +3540,8 @@ else {
      'kneeling_rear_flye' => 5,
      'single_arm_standing_cable_reverse_flye' => 6,
      'swiss_ball_dumbbell_flye' => 7,
+     'arm_rotations' => 8,
+     'hug_a_tree' => 9,
    },
    'hip_raise_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -3515,6 +3588,13 @@ else {
      'single_leg_hip_raise_with_head_on_bosu_ball' => 40,
      'weighted_single_leg_hip_raise_with_head_on_bosu_ball' => 41,
      'weighted_clam_bridge' => 42,
+     'single_leg_swiss_ball_hip_raise_and_leg_curl' => 43,
+     'clams' => 44,
+     'inner_thigh_circles' => 45,
+     'inner_thigh_side_lift' => 46,
+     'leg_circles' => 47,
+     'leg_lift' => 48,
+     'leg_lift_in_external_rotation' => 49,
    },
    'hip_stability_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -3598,6 +3678,9 @@ else {
      'weighted_swiss_ball_hyperextension' => 34,
      'swiss_ball_opposite_arm_and_leg_lift' => 35,
      'weighted_swiss_ball_opposite_arm_and_leg_lift' => 36,
+     'superman_on_swiss_ball' => 37,
+     'cobra' => 38,
+     'supine_floor_barre' => 39,
    },
    'lateral_raise_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -3633,6 +3716,8 @@ else {
      'underhand_grip_rear_lateral_raise' => 29,
      'wall_slide' => 30,
      'weighted_wall_slide' => 31,
+     'arm_circles' => 32,
+     'shaving_the_head' => 33,
    },
    'leg_curl_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -3912,6 +3997,13 @@ else {
      'weighted_mountain_climber_with_hands_on_bench' => 125,
      'weighted_swiss_ball_plank_leg_lift_and_hold' => 126,
      'weighted_wide_stance_plank_with_opposite_arm_and_leg_lift' => 127,
+     'plank_with_feet_on_swiss_ball' => 128,
+     'side_plank_to_plank_with_reach_under' => 129,
+     'bridge_with_glute_lower_lift' => 130,
+     'bridge_one_leg_bridge' => 131,
+     'plank_with_arm_variations' => 132,
+     'plank_with_leg_lift' => 133,
+     'reverse_plank_with_leg_pull' => 134,
    },
    'plyo_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -4071,6 +4163,7 @@ else {
      'ring_push_up' => 75,
      'weighted_ring_push_up' => 76,
      'push_up' => 77,
+     'pilates_pushup' => 78,
    },
    'row_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -4322,6 +4415,11 @@ else {
      'wide_stance_barbell_squat' => 84,
      'wide_stance_goblet_squat' => 85,
      'zercher_squat' => 86,
+     'kbs_overhead' => 87,
+     'squat_and_side_kick' => 88,
+     'squat_jumps_in_n_out' => 89,
+     'pilates_plie_squats_parallel_turned_out_flat_and_heels' => 90,
+     'releve_straight_leg_and_knee_bent_with_one_leg_variation' => 91,
    },
    'total_body_exercise_name' => +{
      '_base_type' => FIT_UINT16,
@@ -4450,6 +4548,11 @@ else {
      '_base_type' => FIT_ENUM,
      'at_depth' => 0,
      'always_on' => 1,
+   },
+   'favero_product' => +{
+     '_base_type' => FIT_UINT16,
+     'assioma_uno' => 10,
+     'assioma_duo' => 12,
    },
 
    );
@@ -4601,6 +4704,7 @@ sub named_type_value {
          'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'favero_electronics' => +{'name' => 'favero_product', 'type_name' => 'favero_product'},
        },
      },
 
@@ -4649,6 +4753,7 @@ sub named_type_value {
          'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'favero_electronics' => +{'name' => 'favero_product', 'type_name' => 'favero_product'},
        },
      },
    },
@@ -5497,6 +5602,7 @@ sub named_type_value {
          'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'favero_electronics' => +{'name' => 'favero_product', 'type_name' => 'favero_product'},
        },
      },
 
@@ -5532,6 +5638,7 @@ sub named_type_value {
          'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'favero_electronics' => +{'name' => 'favero_product', 'type_name' => 'favero_product'},
        },
      },
 
@@ -6047,6 +6154,7 @@ sub named_type_value {
          'garmin' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
          'dynastream_oem' => +{'name' => 'garmin_product', 'type_name' => 'garmin_product'},
+         'favero_electronics' => +{'name' => 'favero_product', 'type_name' => 'favero_product'},
        },
      },
 
