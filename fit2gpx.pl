@@ -143,7 +143,7 @@ my $prev_lat; my $prev_lon;
 # my $prev_dist; my $prev_alt;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
 my $tot_time;
-my $tot_records;
+my $tot_records = 0;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
 my $histSize = 6;
@@ -1575,7 +1575,7 @@ sub PrintGpxLap {
   # endlon and endlat are not present in session!
   my $endlon = undef; my $endlat = undef;
   my $tetime = undef; my $tttime = undef; my $tstanding = undef;
-  my $tdistance = undef; my $tcycles = undef; my $tcal = undef;
+  my $tdistance = 0; my $tcycles = undef; my $tcal = undef;
   my $avgspeed = undef; my $maxspeed = undef;
   my $tascent = undef; my $tdescent = undef;
   my $avghr = undef; my $maxhr = undef;
@@ -1710,16 +1710,18 @@ sub PrintGpxLap {
 
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "time_under_target_zone", "max", $g_timeUnderTargetZone;
-    printf "%s<!-- percent_under_target_zone>%.1f</percent_under_target_zone -->\n",
-      $indent x 3, $g_timeUnderTargetZone / $tot_time * 100;
-    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
-      $indent x 3, "time_in_target_zone", "max", $g_timeInTargetZone;
-    printf "%s<!-- percent_in_target_zone>%.1f</percent_in_target_zone -->\n",
-      $indent x 3, $g_timeInTargetZone / $tot_time * 100;
-    printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
-      $indent x 3, "time_over_target_zone", "max", $g_timeOverTargetZone;
-    printf "%s<!-- percent_over_target_zone>%.1f</percent_over_target_zone -->\n",
-      $indent x 3, $g_timeOverTargetZone / $tot_time * 100;
+    if ($tot_time) {
+        printf "%s<!-- percent_under_target_zone>%.1f</percent_under_target_zone -->\n",
+          $indent x 3, $g_timeUnderTargetZone / $tot_time * 100;
+        printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+          $indent x 3, "time_in_target_zone", "max", $g_timeInTargetZone;
+        printf "%s<!-- percent_in_target_zone>%.1f</percent_in_target_zone -->\n",
+          $indent x 3, $g_timeInTargetZone / $tot_time * 100;
+        printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
+          $indent x 3, "time_over_target_zone", "max", $g_timeOverTargetZone;
+        printf "%s<!-- percent_over_target_zone>%.1f</percent_over_target_zone -->\n",
+          $indent x 3, $g_timeOverTargetZone / $tot_time * 100;
+    }
 
 #   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
 #     $indent x 3, "time_under_intensity_zone", "max", $g_timeUnderIntZone;
