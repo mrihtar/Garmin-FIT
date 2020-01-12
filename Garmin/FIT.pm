@@ -2173,6 +2173,7 @@ else {
      'fenix5_plus' => 3110,
      'fenix5x_plus' => 3111,
      'edge_520_plus' => 3112,
+     'instinct' => 3126,
      'hrm_dual' => 3299, # HRM-Dual
      'approach_s40' => 3314,
      'sdm4' => 10007, # SDM4 footpod
