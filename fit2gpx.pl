@@ -1465,6 +1465,7 @@ sub PrintGpxTrkpt {
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
+    elsif ($k eq "enhanced_altitude") { $ele = $v; }
   }
 
   # Fill in default values if no data found
