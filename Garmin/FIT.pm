@@ -831,10 +831,10 @@ if (defined $uint64_invalid) {
 else {
   $template[FIT_SINT64] = $template[FIT_UINT64] = $template[FIT_UINT64Z] = 'L';
   $packfactor[FIT_SINT64] = $packfactor[FIT_UINT64] = $packfactor[FIT_UINT64Z] = 2;
-  $packfilter[FIT_SINT64] = \&packfiltr_sint64;
-  $unpackfilter[FIT_SINT64] = \&unpackfiltr_sint64;
-  $packfilter[FIT_UINT64] = $packfilter[FIT_UINT64Z] = \&packfiltr_uint64;
-  $unpackfilter[FIT_UINT64] = $unpackfilter[FIT_UINT64Z] = \&unpackfiltr_uint64;
+  $packfilter[FIT_SINT64] = \&packfilter_sint64;
+  $unpackfilter[FIT_SINT64] = \&unpackfilter_sint64;
+  $packfilter[FIT_UINT64] = $packfilter[FIT_UINT64Z] = \&packfilter_uint64;
+  $unpackfilter[FIT_UINT64] = $unpackfilter[FIT_UINT64Z] = \&unpackfilter_uint64;
 }
 
 %named_type =
