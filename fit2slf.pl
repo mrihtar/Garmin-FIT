@@ -305,9 +305,12 @@ sub Message {
     my $invalid = $desc->{'I_' . $name};
     my $j;
 
+    my $len = @$v;
     for ($j = 0 ; $j < $c ; $j++) {
-      Garmin::FIT->isnan($v->[$i + $j]) && next;
-      $v->[$i + $j] != $invalid && last;
+      my $ij = $i + $j;
+      $ij >= $len && next;
+      Garmin::FIT->isnan($v->[$ij]) && next;
+      $v->[$ij] != $invalid && last;
     }
     if ($j < $c) { # skip invalid
       if ($type == FIT_STRING) {
