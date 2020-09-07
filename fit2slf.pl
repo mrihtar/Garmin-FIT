@@ -211,7 +211,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.13  Copyright (c) 2016-2020 Matjaz Rihtar  (Jul 27, 2020)\n";
+    printf STDERR "fit2slf 2.14  Copyright (c) 2016-2020 Matjaz Rihtar  (Sep 7, 2020)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;

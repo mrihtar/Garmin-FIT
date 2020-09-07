@@ -43,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.31;
+$version = 0.32;
 $version_major_scale = 100;
 
 sub version_major {
