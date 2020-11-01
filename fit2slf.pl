@@ -143,7 +143,7 @@ my $prev_timestamp;
 my $prev_lat; my $prev_lon;
 # my $prev_dist; my $prev_alt;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
-my $tot_time;
+my $tot_time = 0;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
 my $histSize = 6;
@@ -902,7 +902,7 @@ sub PrintSlfGeneralInfo {
   printf "%s<distanceUphill>%.1f</distanceUphill>\n",
     $indent x 2, $g_distUphill; # m
 
-  printf "%s<exerciseTime>%g</exerciseTime>\n",
+  printf "%s<exerciseTime>%d</exerciseTime>\n",
     $indent x 2, $g_totElapsTime * 100; # 1/100 sec
 
   printf "%s<externalLink><![CDATA[%s]]></externalLink>\n",
@@ -1296,7 +1296,6 @@ sub PrintSlfEntries {
   @prev_altDiff =  (0) x $histSize;
   $prev_speed = 0; $prev_hr = 0; # undef
   $prev_cad = 0; $prev_temp = 0; # undef
-  $tot_time = 0;
 
   FilterAlt($alt0);
 # kalman_init(\%pwr_state, 2, 25, 1, $alt0);

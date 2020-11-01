@@ -142,7 +142,7 @@ my $prev_timestamp;
 my $prev_lat; my $prev_lon;
 # my $prev_dist; my $prev_alt;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
-my $tot_time;
+my $tot_time = 0;
 my $tot_records = 0;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
@@ -1006,7 +1006,6 @@ sub ProcessRecords {
   @prev_altDiff =  (0) x $histSize;
   $prev_speed = 0; $prev_hr = 0; # undef
   $prev_cad = 0; $prev_temp = 0; # undef
-  $tot_time = 0;
 
   FilterAlt($alt0);
 # kalman_init(\%pwr_state, 2, 25, 1, $alt0);
@@ -1644,6 +1643,7 @@ sub PrintGpxLap {
   $startlon = 0 if !defined $startlon;
   $endlat = 0 if !defined $endlat;
   $endlon = 0 if !defined $endlon;
+  $tdistance = 0 if !defined $tdistance;
   $tcycles = 0 if !defined $tcycles;
   $tcal = 0 if !defined $tcal;
   $avgspeed = 0 if !defined $avgspeed;
