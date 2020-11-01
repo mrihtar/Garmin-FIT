@@ -51,7 +51,7 @@ my $riseRateUphills = [];
 my $g_manuf; # garmin, suunto, magellan, holux, sigmasport, ...
 my $g_product; # fr___, edge___, hrm___, vivo___, virb___, ...
 my $g_serial;
-# SigmaSport: cycling, mountainbike, racing_bycicle (road bike), running, ...
+# SigmaSport: cycling, mountainbike, racing_bicycle (road bike), running, ...
 my $g_sport; # generic, running, cycling, training, walking, ...
 my $g_subSport; # generic, road, mountain, downhill, ...
 my $g_trainType; # SigmaSport specific (manual entry)
@@ -211,7 +211,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.12  Copyright (c) 2016-2019 Matjaz Rihtar  (Mar 11, 2019)\n";
+    printf STDERR "fit2slf 2.14  Copyright (c) 2016-2020 Matjaz Rihtar  (Sep 7, 2020)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -305,9 +305,12 @@ sub Message {
     my $invalid = $desc->{'I_' . $name};
     my $j;
 
+    my $len = @$v;
     for ($j = 0 ; $j < $c ; $j++) {
-      Garmin::FIT->isnan($v->[$i + $j]) && next;
-      $v->[$i + $j] != $invalid && last;
+      my $ij = $i + $j;
+      $ij >= $len && next;
+      Garmin::FIT->isnan($v->[$ij]) && next;
+      $v->[$ij] != $invalid && last;
     }
     if ($j < $c) { # skip invalid
       if ($type == FIT_STRING) {
@@ -596,7 +599,7 @@ sub ReadIniFile {
   elsif (!defined $g_trackName) { $g_trackName = ""; }
 
   $val = $ini->param("description");
-# print STDERR "INI: track_name = |$val|\n" if defined $val;
+# print STDERR "INI: description = |$val|\n" if defined $val;
   if (defined $val) { $g_description = $val; }
   elsif (!defined $g_description) { $g_description = ""; }
 
@@ -1135,7 +1138,12 @@ sub Get1stAlt {
     my $k; my $v;
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
+      elsif ($k eq "altitude") {
+        if (!defined $alt) { $alt = $v; } # can be invalid
+      }
+      elsif ($k eq "enhanced_altitude") {
+        if (defined $v) { $alt = $v; } # only if valid
+      }
     }
     last; # check only 1st record
   }
@@ -1208,7 +1216,12 @@ sub FilterAlt {
 
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
+      elsif ($k eq "altitude") {
+        if (!defined $alt) { $alt = $v; } # can be invalid
+      }
+      elsif ($k eq "enhanced_altitude") {
+        if (defined $v) { $alt = $v; } # only if valid
+      }
     }
     if (!defined $alt) { $alt = $priv_alt; }
 
@@ -1317,8 +1330,18 @@ sub PrintSlfEntry {
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
-    elsif ($k eq "altitude") { $alt = $v; } # can be invalid
-    elsif ($k eq "speed") { $speed = $v; }
+    elsif ($k eq "altitude") {
+      if (!defined $alt) { $alt = $v; } # can be invalid
+    }
+    elsif ($k eq "enhanced_altitude") {
+      if (defined $v) { $alt = $v; } # only if valid
+    }
+    elsif ($k eq "speed") {
+      if (!defined $speed) { $speed = $v; } # can be invalid
+    }
+    elsif ($k eq "enhanced_speed") {
+      if (defined $v) { $speed = $v; } # only if valid
+    }
     elsif ($k eq "power") { $power = $v; } # can be missing (=> calculated)
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }

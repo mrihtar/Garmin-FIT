@@ -48,7 +48,7 @@ Currently supported FIT protocol and profile in this version of library is:
 
 FIT Protocol | FIT Profile  | Released
 ------------ |:------------ |:------------
-2.3          | 20.94        | 03-Jul-2019
+2.4          | 21.32        | 28-May-2020
 
 Some of the messages and fields used in this implementation are not described
 in the latest official [FIT SDK] documentation and are therefore
@@ -216,14 +216,14 @@ are named as ```xxx<field_number>```.
 **fitdump.pl** is written in a generic way and will read all versions of
 .FIT files (past and future).
 
-[Garmin::FIT library]: http://pub.ks-and-ks.ne.jp/cycling/GarminFIT.shtml
-[FIT SDK]: http://www.thisisant.com/resources/fit
-[thisisant.com]: http://www.thisisant.com/developer/
-[Garmin Connect Export option]: http://support.strava.com/hc/en-us/articles/216917807-Exporting-files-from-Garmin-Connect
-[Windows **ini** format]: http://en.wikipedia.org/wiki/INI_file
+[Garmin::FIT library]: https://pub.ks-and-ks.ne.jp/cycling/GarminFIT.shtml
+[FIT SDK]: https://www.thisisant.com/developer/resources/downloads/
+[thisisant.com]: https://www.thisisant.com/developer/
+[Garmin Connect Export option]: https://support.strava.com/hc/en-us/articles/216917807-Exporting-files-from-Garmin-Connect
+[Windows **ini** format]: https://en.wikipedia.org/wiki/INI_file
 [Config (ini) File Syntax]: config.md
-[Garmin's Track Point Extension Format v1]: http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd
-[Cluetrust GPX Extension Format]: http://www.cluetrust.com/Schemas/gpxdata10.xsd
+[Garmin's Track Point Extension Format v1]: https://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd
+[Cluetrust GPX Extension Format]: https://www.cluetrust.com/Schemas/gpxdata10.xsd
 [Validation of a Mathematical Model for Road Cycling Power]: http://www.wisil.recumbents.com/wisil/MartinDocs/Validation%20of%20a%20mathematical%20model%20for%20road%20cycling.pdf
-[SigmaSport Data Center]: http://www.sigmasport.com/en/produkte/software/software/apps/data-center
+[SigmaSport Data Center]: https://www.sigmasport.com/en/produkte/software/software/apps/data-center
 <!-- http://dcupdate.sigmasport.com/en/hinweis/ -->

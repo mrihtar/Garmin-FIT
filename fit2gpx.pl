@@ -50,7 +50,7 @@ my $riseRateUphills = [];
 my $g_manuf; # garmin, suunto, magellan, holux, sigmasport, ...
 my $g_product; # fr___, edge___, hrm___, vivo___, virb___, ...
 my $g_serial;
-# SigmaSport: cycling, mountainbike, racing_bycicle (road bike), running, ...
+# SigmaSport: cycling, mountainbike, racing_bicycle (road bike), running, ...
 my $g_sport; # generic, running, cycling, training, walking, ...
 my $g_subSport; # generic, road, mountain, downhill, ...
 my $g_trainType; # SigmaSport specific (manual entry)
@@ -143,7 +143,7 @@ my $prev_lat; my $prev_lon;
 # my $prev_dist; my $prev_alt;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
 my $tot_time;
-my $tot_records;
+my $tot_records = 0;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
 my $histSize = 6;
@@ -216,7 +216,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.12  Copyright (c) 2016-2019 Matjaz Rihtar  (Mar 11, 2019)\n";
+    printf STDERR "fit2gpx 2.14  Copyright (c) 2016-2020 Matjaz Rihtar  (Sep 7, 2020)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -316,9 +316,12 @@ sub Message {
     my $invalid = $desc->{'I_' . $name};
     my $j;
 
+    my $len = @$v;
     for ($j = 0 ; $j < $c ; $j++) {
-      Garmin::FIT->isnan($v->[$i + $j]) && next;
-      $v->[$i + $j] != $invalid && last;
+      my $ij = $i + $j;
+      $ij >= $len && next;
+      Garmin::FIT->isnan($v->[$ij]) && next;
+      $v->[$ij] != $invalid && last;
     }
     if ($j < $c) { # skip invalid
       if ($type == FIT_STRING) {
@@ -597,7 +600,7 @@ sub ReadIniFile {
   elsif (!defined $g_trackName) { $g_trackName = ""; }
 
   $val = $ini->param("description");
-# print STDERR "INI: track_name = |$val|\n" if defined $val;
+# print STDERR "INI: description = |$val|\n" if defined $val;
   if (defined $val) { $g_description = $val; }
   elsif (!defined $g_description) { $g_description = ""; }
 
@@ -848,7 +851,12 @@ sub Get1stAlt {
     my $k; my $v;
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
+      elsif ($k eq "altitude") {
+        if (!defined $alt) { $alt = $v; } # can be invalid
+      }
+      elsif ($k eq "enhanced_altitude") {
+        if (defined $v) { $alt = $v; } # only if valid
+      }
     }
     last; # check only 1st record
   }
@@ -921,7 +929,12 @@ sub FilterAlt {
 
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") { $alt = $v; } # can be invalid
+      elsif ($k eq "altitude") {
+        if (!defined $alt) { $alt = $v; } # can be invalid
+      }
+      elsif ($k eq "enhanced_altitude") {
+        if (defined $v) { $alt = $v; } # only if valid
+      }
     }
     if (!defined $alt) { $alt = $priv_alt; }
 
@@ -1025,8 +1038,18 @@ sub ProcessRecord {
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
-    elsif ($k eq "altitude") { $alt = $v; } # can be invalid
-    elsif ($k eq "speed") { $speed = $v; }
+    elsif ($k eq "altitude") {
+      if (!defined $alt) { $alt = $v; } # can be invalid
+    }
+    elsif ($k eq "enhanced_altitude") {
+      if (defined $v) { $alt = $v; } # only if valid
+    }
+    elsif ($k eq "speed") {
+      if (!defined $speed) { $speed = $v; } # can be invalid
+    }
+    elsif ($k eq "enhanced_speed") {
+      if (defined $v) { $speed = $v; } # only if valid
+    }
     elsif ($k eq "power") { $power = $v; } # can be missing (=> calculated)
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
@@ -1461,7 +1484,12 @@ sub PrintGpxTrkpt {
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     # optional
-    elsif ($k eq "altitude") { $ele = $v; } # can be invalid
+    elsif ($k eq "altitude") {
+      if (!defined $ele) { $ele = $v; } # can be invalid
+    }
+    elsif ($k eq "enhanced_altitude") {
+      if (defined $v) { $ele = $v; } # only if valid
+    }
     elsif ($k eq "heart_rate") { $hr = $v; }
     elsif ($k eq "cadence") { $cad = $v; }
     elsif ($k eq "temperature") { $temp = $v; }
@@ -1667,6 +1695,8 @@ sub PrintGpxLap {
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "max_speed", "max", $maxspeed;
 
+    $g_minAlt = 0 if $g_minAlt == 10000;
+    $g_maxAlt = 0 if $g_maxAlt == -10000;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "min_altitude", "min", $g_minAlt;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
@@ -1694,6 +1724,7 @@ sub PrintGpxLap {
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "avg_rise_rate_downhill", "avg", Average(@$riseRateDownhills);
 
+    $g_minHr = 0 if $g_minHr == 10000;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
       $indent x 3, "min_heart_rate", "min", $g_minHr;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
@@ -1701,25 +1732,43 @@ sub PrintGpxLap {
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
       $indent x 3, "max_heart_rate", "max", $maxhr;
 
+    my $minPcHrMax;
+    if ($g_hrMax != 0) { $minPcHrMax = $g_minHr / $g_hrMax * 100; }
+    else { $minPcHrMax = 0.0; }
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
-      $indent x 3, "min_percent_hrmax", "min", $g_minHr / $g_hrMax * 100;
+      $indent x 3, "min_percent_hrmax", "min", $minPcHrMax;
+    my $avgPcHrMax;
+    if ($g_hrMax != 0) { $avgPcHrMax = $avghr / $g_hrMax * 100; }
+    else { $avgPcHrMax = 0.0; }
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
-      $indent x 3, "avg_percent_hrmax", "avg", $avghr / $g_hrMax * 100;
+      $indent x 3, "avg_percent_hrmax", "avg", $avgPcHrMax;
+    my $maxPcHrMax;
+    if ($g_hrMax != 0) { $maxPcHrMax = $maxhr / $g_hrMax * 100; }
+    else { $maxPcHrMax = 0.0; }
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
-      $indent x 3, "max_percent_hrmax", "max", $maxhr / $g_hrMax * 100;
+      $indent x 3, "max_percent_hrmax", "max", $maxPcHrMax;
 
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "time_under_target_zone", "max", $g_timeUnderTargetZone;
+    my $pcUnderTargetZone;
+    if ($tot_time != 0) { $pcUnderTargetZone = $g_timeUnderTargetZone / $tot_time * 100; }
+    else { $pcUnderTargetZone = 0.0; }
     printf "%s<!-- percent_under_target_zone>%.1f</percent_under_target_zone -->\n",
-      $indent x 3, $g_timeUnderTargetZone / $tot_time * 100;
+      $indent x 3, $pcUnderTargetZone;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "time_in_target_zone", "max", $g_timeInTargetZone;
+    my $pcInTargetZone;
+    if ($tot_time != 0) { $pcInTargetZone = $g_timeInTargetZone / $tot_time * 100; }
+    else { $pcInTargetZone = 0.0; }
     printf "%s<!-- percent_in_target_zone>%.1f</percent_in_target_zone -->\n",
-      $indent x 3, $g_timeInTargetZone / $tot_time * 100;
+      $indent x 3, $pcInTargetZone;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "time_over_target_zone", "max", $g_timeOverTargetZone;
+    my $pcOverTargetZone;
+    if ($tot_time != 0) { $pcOverTargetZone = $g_timeOverTargetZone / $tot_time * 100; }
+    else { $pcOverTargetZone = 0.0; }
     printf "%s<!-- percent_over_target_zone>%.1f</percent_over_target_zone -->\n",
-      $indent x 3, $g_timeOverTargetZone / $tot_time * 100;
+      $indent x 3, $pcOverTargetZone;
 
 #   printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
 #     $indent x 3, "time_under_intensity_zone", "max", $g_timeUnderIntZone;
@@ -1754,6 +1803,7 @@ sub PrintGpxLap {
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "avg_power_W_per_Kg", "avg", $avgpower / $g_weight;
     $maxpower = $g_maxPower if !defined $maxpower;
+    $maxpower = 0 if $maxpower == -10000;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "max_power", "max", $maxpower;
 

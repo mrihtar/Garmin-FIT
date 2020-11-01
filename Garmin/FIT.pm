@@ -43,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.30;
+$version = 0.32;
 $version_major_scale = 100;
 
 sub version_major {
@@ -140,7 +140,7 @@ sub protocol_version_from_string {
   }
 }
 
-$protocol_version = &protocol_version_from_string(undef, "2.3");
+$protocol_version = &protocol_version_from_string(undef, "2.4");
 @protocol_version = &protocol_version_major(undef, $protocol_version);
 $protocol_version_header_crc_started = &protocol_version_from_string(undef, "1.0");
 
@@ -195,7 +195,7 @@ sub profile_version_from_string {
   }
 }
 
-$profile_version = &profile_version_from_string(undef, "20.94");
+$profile_version = &profile_version_from_string(undef, "21.32");
 @profile_version = &profile_version_major(undef, $profile_version);
 
 sub profile_version_string {
@@ -831,10 +831,10 @@ if (defined $uint64_invalid) {
 else {
   $template[FIT_SINT64] = $template[FIT_UINT64] = $template[FIT_UINT64Z] = 'L';
   $packfactor[FIT_SINT64] = $packfactor[FIT_UINT64] = $packfactor[FIT_UINT64Z] = 2;
-  $packfilter[FIT_SINT64] = \&packfiltr_sint64;
-  $unpackfilter[FIT_SINT64] = \&unpackfiltr_sint64;
-  $packfilter[FIT_UINT64] = $packfilter[FIT_UINT64Z] = \&packfiltr_uint64;
-  $unpackfilter[FIT_UINT64] = $unpackfilter[FIT_UINT64Z] = \&unpackfiltr_uint64;
+  $packfilter[FIT_SINT64] = \&packfilter_sint64;
+  $unpackfilter[FIT_SINT64] = \&unpackfilter_sint64;
+  $packfilter[FIT_UINT64] = $packfilter[FIT_UINT64Z] = \&packfilter_uint64;
+  $unpackfilter[FIT_UINT64] = $unpackfilter[FIT_UINT64Z] = \&unpackfilter_uint64;
 }
 
 %named_type =
@@ -960,6 +960,8 @@ else {
      'dive_alarm' => 262,
      'exercise_title' => 264,
      'dive_summary' => 268,
+     'jump' => 285,
+     'climb_pro' => 317,
      'mfg_range_min' => 0xFF00,
      'mfg_range_max' => 0xFFFE,
    },
@@ -1631,6 +1633,7 @@ else {
      'elev_high_alert' => 45,
      'elev_low_alert' => 46,
      'comm_timeout' => 47,
+     'radar_threat_alert' => 75,
    },
 
    'event_type' => +{
@@ -1730,6 +1733,7 @@ else {
      'repeat_until_training_peaks_tss' => 27,
      'repetition_time' => 28,
      'reps' => 29,
+     'time_only' => 31,
    },
 
    'wkt_step_target' => +{
@@ -1941,6 +1945,10 @@ else {
      'iqsquare' => 126,
      'leomo' => 127,
      'ifit_com' => 128,
+     'coros_byte' => 129,
+     'versa_design' => 130,
+     'chileaf' => 131,
+     'cycplus' => 132,
      'development' => 255,
      'healthandlife' => 257,
      'lezyne' => 258,
@@ -1985,6 +1993,11 @@ else {
      'cycligentinc' => 297,
      'trailforks' => 298,
      'mahle_ebikemotion' => 299,
+     'nurvv' => 300,
+     'microprogram' => 301,
+     'zone5cloud' => 302,
+     'greenteg' => 303,
+     'yamaha_motors' => 304,
      'actigraphcorp' => 5759,
    },
 
@@ -1992,30 +2005,31 @@ else {
      '_base_type' => FIT_UINT16,
      'hrm_bike' => 0, # not present?
      'hrm1' => 1,
-     'axh01' => 2,
+     'axh01' => 2, # AXH01 HRM chipset
      'axb01' => 3,
      'axb02' => 4,
      'hrm2ss' => 5,
      'dsi_alf02' => 6,
      'hrm3ss' => 7,
-     'hrm_run_single_byte_product_id' => 8,
-     'bsm' => 9,
-     'bcm' => 10,
-     'axs01' => 11,
-     'hrm_tri_single_byte_product_id' => 12,
-     'fr225_single_byte_product_id' => 14,
+     'hrm_run_single_byte_product_id' => 8, # hrm_run model for HRM ANT+ messaging
+     'bsm' => 9, # BSM model for ANT+ messaging
+     'bcm' => 10, # BCM model for ANT+ messaging
+     'axs01' => 11, # AXS01 HRM Bike Chipset model for ANT+ messaging
+     'hrm_tri_single_byte_product_id' => 12, # hrm_tri model for HRM ANT+ messaging
+     'hrm4_run_single_byte_product_id' => 13, # hrm4 run model for HRM ANT+ messaging
+     'fr225_single_byte_product_id' => 14, # fr225 model for HRM ANT+ messaging
      'fr301_china' => 473,
      'fr301_japan' => 474,
      'fr301_korea' => 475,
      'fr301_taiwan' => 494,
-     'fr405' => 717,
-     'fr50' => 782,
+     'fr405' => 717, # Forerunner 405
+     'fr50' => 782, # Forerunner 50
      'fr405_japan' => 987,
-     'fr60' => 988,
+     'fr60' => 988, # Forerunner 60
      'dsi_alf01' => 1011,
-     'fr310xt' => 1018,
+     'fr310xt' => 1018, # Forerunner 310
      'edge500' => 1036,
-     'fr110' => 1124,
+     'fr110' => 1124, # Forerunner 110
      'edge800' => 1169,
      'edge500_taiwan' => 1199,
      'edge500_japan' => 1213,
@@ -2032,6 +2046,7 @@ else {
      'vector_cp' => 1381,
      'edge800_china' => 1386,
      'edge500_china' => 1387,
+     'approach_g10' => 1405,
      'fr610_japan' => 1410,
      'edge500_korea' => 1422,
      'fr70' => 1436,
@@ -2053,7 +2068,7 @@ else {
      'fr10_japan' => 1688,
      'edge810_japan' => 1721,
      'virb_elite' => 1735,
-     'edge_touring' => 1736,
+     'edge_touring' => 1736, # Also Edge Touring Plus
      'edge510_japan' => 1742,
      'hrm_tri' => 1743,
      'hrm_run' => 1752,
@@ -2115,17 +2130,36 @@ else {
      'varia_radar_taillight' => 2225,
      'varia_radar_display' => 2226,
      'edge20' => 2238,
+     'edge520_asia' => 2260,
+     'edge520_japan' => 2261,
      'd2_bravo' => 2262,
      'approach_s20' => 2266,
+     'vivo_smart2' => 2271,
+     'edge1000_thai' => 2274,
      'varia_remote' => 2276,
+     'edge25_asia' => 2288,
+     'edge25_jpn' => 2289,
+     'edge20_asia' => 2290,
      'approach_x40' => 2292,
+     'fenix3_japan' => 2293,
+     'vivo_smart_emea' => 2294,
+     'fr630_asia' => 2310,
+     'fr630_jpn' => 2311,
+     'fr230_jpn' => 2313,
      'hrm4_run' => 2327,
+     'epix_japan' => 2332,
      'vivo_active_hr' => 2337,
      'vivo_smart_gps_hr' => 2347,
      'vivo_smart_hr' => 2348,
+     'vivo_smart_hr_asia' => 2361,
+     'vivo_smart_gps_hr_asia' => 2362,
      'vivo_move' => 2368,
+     'varia_taillight' => 2379,
+     'fr235_japan' => 2397,
      'varia_vision' => 2398,
      'vivo_fit3' => 2406,
+     'fenix3_korea' => 2407,
+     'fenix3_sea' => 2408,
      'fenix3_hr' => 2413,
      'virb_ultra_30' => 2417,
      'index_smart_scale' => 2429,
@@ -2133,7 +2167,15 @@ else {
      'fenix3_chronos' => 2432,
      'oregon7xx' => 2441,
      'rino7xx' => 2444,
+     'epix_korea' => 2457,
+     'fenix3_hr_chn' => 2473,
+     'fenix3_hr_twn' => 2474,
+     'fenix3_hr_jpn' => 2475,
+     'fenix3_hr_sea' => 2476,
+     'fenix3_hr_kor' => 2477,
      'nautix' => 2496,
+     'vivo_active_hr_apac' => 2497,
+     'oregon7xx_ww' => 2512,
      'edge_820' => 2530,
      'edge_explore_820' => 2531,
      'fr735xt_apac' => 2533,
@@ -2142,40 +2184,116 @@ else {
      'd2_bravo_titanium' => 2547,
      'varia_ut800' => 2567, # Varia UT 800 SW
      'running_dynamics_pod' => 2593,
+     'edge_820_china' => 2599,
+     'edge_820_japan' => 2600,
      'fenix5x' => 2604,
      'vivo_fit_jr' => 2606,
      'vivo_smart3' => 2622,
      'vivo_sport' => 2623,
+     'edge_820_taiwan' => 2628,
+     'edge_820_korea' => 2629,
+     'edge_820_sea' => 2630,
+     'fr35_hebrew' => 2650,
      'approach_s60' => 2656,
+     'fr35_apac' => 2667,
+     'fr35_japan' => 2668,
+     'fenix3_chronos_asia' => 2675,
      'virb_360' => 2687,
      'fr935' => 2691,
      'fenix5' => 2697,
      'vivoactive3' => 2700,
+     'fr235_china_nfc' => 2733,
      'foretrex_601_701' => 2769,
      'vivo_move_hr' => 2772,
      'edge_1030' => 2713,
+     'fenix5_asia' => 2796,
+     'fenix5s_asia' => 2797,
+     'fenix5x_asia' => 2798,
      'approach_z80' => 2806,
+     'fr35_korea' => 2814,
+     'd2charlie' => 2819,
      'vivo_smart3_apac' => 2831,
      'vivo_sport_apac' => 2832,
+     'fr935_asia' => 2833,
      'descent' => 2859,
      'fr645' => 2886,
      'fr645m' => 2888,
+     'fr30' => 2891,
      'fenix5s_plus' => 2900,
      'Edge_130' => 2909,
+     'edge_1030_asia' => 2924,
      'vivosmart_4' => 2927,
+     'vivo_move_hr_asia' => 2945,
      'approach_x10' => 2962,
+     'fr30_asia' => 2977,
      'vivoactive3m_w' => 2988,
+     'fr645_asia' => 3003,
+     'fr645m_asia' => 3004,
      'edge_explore' => 3011,
      'gpsmap66' => 3028,
      'approach_s10' => 3049,
      'vivoactive3m_l' => 3066,
      'approach_g80' => 3085,
+     'edge_130_asia' => 3092,
+     'edge_1030_bontrager' => 3095,
      'fenix5_plus' => 3110,
      'fenix5x_plus' => 3111,
      'edge_520_plus' => 3112,
+     'edge_530' => 3121,
+     'edge_830' => 3122,
      'instinct' => 3126,
+     'fenix5s_plus_apac' => 3134,
+     'fenix5x_plus_apac' => 3135,
+     'edge_520_plus_apac' => 3142,
+     'fr235l_asia' => 3144,
+     'fr245_asia' => 3145,
+     'vivo_active3m_apac' => 3163,
+     'vivo_smart4_asia' => 3218,
+     'vivoactive4_small' => 3224,
+     'vivoactive4_large' => 3225,
+     'venu' => 3226,
+     'marq_driver' => 3246,
+     'marq_aviator' => 3247,
+     'marq_captain' => 3248,
+     'marq_commander' => 3249,
+     'marq_expedition' => 3250,
+     'marq_athlete' => 3251,
+     'fenix6S_sport' => 3287,
+     'fenix6S' => 3288,
+     'fenix6_sport' => 3289,
+     'fenix6' => 3290,
+     'fenix6x' => 3291,
      'hrm_dual' => 3299, # HRM-Dual
+     'vivo_move3_premium' => 3308,
      'approach_s40' => 3314,
+     'fr245m_asia' => 3321,
+     'edge_530_apac' => 3349,
+     'edge_830_apac' => 3350,
+     'vivo_move3' => 3378,
+     'vivo_active4_small_asia' => 3387,
+     'vivo_active4_large_asia' => 3388,
+     'vivo_active4_oled_asia' => 3389,
+     'swim2' => 3405,
+     'marq_driver_asia' => 3420,
+     'marq_aviator_asia' => 3421,
+     'vivo_move3_asia' => 3422,
+     'vivo_active3t_chn' => 3446,
+     'marq_captain_asia' => 3448,
+     'marq_commander_asia' => 3449,
+     'marq_expedition_asia' => 3450,
+     'marq_athlete_asia' => 3451,
+     'fr45_asia' => 3469,
+     'vivoactive3_daimler' => 3473,
+     'fenix6s_sport_asia' => 3512,
+     'fenix6s_asia' => 3513,
+     'fenix6_sport_asia' => 3514,
+     'fenix6_asia' => 3515,
+     'fenix6x_asia' => 3516,
+     'marq_adventurer' => 3624,
+     'marq_adventurer_asia' => 3648,
+     'swim2_apac' => 3639,
+     'venu_daimler_asia' => 3737,
+     'venu_daimler' => 3740,
      'sdm4' => 10007, # SDM4 footpod
      'edge_remote' => 10014,
      'training_center' => 20119,
@@ -4555,6 +4673,25 @@ else {
      'assioma_uno' => 10,
      'assioma_duo' => 12,
    },
+   'climb_pro_event' => +{
+     '_base_type' => FIT_ENUM,
+     'approach' => 0,
+     'start' => 1,
+     'complete' => 2,
+   },
+   'tap_sensitivity' => +{
+     '_base_type' => FIT_ENUM,
+     'high' => 0,
+     'medium' => 1,
+     'low' => 2,
+   },
+   'radar_threat_level_type' => +{
+     '_base_type' => FIT_ENUM,
+     'threat_unknown' => 0,
+     'threat_none' => 1,
+     'threat_approaching' => 2,
+     'threat_approaching_fast' => 3,
+   },
 
    );
 
@@ -4857,6 +4994,7 @@ sub named_type_value {
      98 => +{'name' => 'unknown98'}, # unknown ENUM
      103 => +{'name' => 'unknown103'}, # unknown ENUM
      134 => +{'name' => 'tap_interface', 'type_name' => 'switch'},
+     174 => +{'name' => 'tap_sensitivity', 'type_name' => 'tap_sensitivity'},
    },
 
    'user_profile' => +{
@@ -5289,6 +5427,11 @@ sub named_type_value {
      134 => +{'name' => 'avg_step_length', 'scale' => 10, 'unit' => 'mm'},
      137 => +{'name' => 'total_anaerobic_training_effect', 'scale' => 10},
      139 => +{'name' => 'avg_vam', 'scale' => 1000, 'unit' => 'm/s'},
+     181 => +{'name' => 'total_grit', 'unit' => 'kGrit'},
+     182 => +{'name' => 'total_flow', 'unit' => 'Flow'},
+     183 => +{'name' => 'jump_count'},
+     186 => +{'name' => 'avg_grit', 'unit' => 'kGrit'},
+     187 => +{'name' => 'avg_flow', 'unit' => 'Flow'},
    },
 
    'lap' => +{
@@ -5438,6 +5581,11 @@ sub named_type_value {
      119 => +{'name' => 'avg_stance_time_balance', 'scale' => 100, 'unit' => '%'},
      120 => +{'name' => 'avg_step_length', 'scale' => 10, 'unit' => 'mm'},
      121 => +{'name' => 'avg_vam', 'scale' => 1000, 'unit' => 'm/s'},
+     149 => +{'name' => 'total_grit', 'unit' => 'kGrit'},
+     150 => +{'name' => 'total_flow', 'unit' => 'Flow'},
+     151 => +{'name' => 'jump_count'},
+     153 => +{'name' => 'avg_grit', 'unit' => 'kGrit'},
+     154 => +{'name' => 'avg_flow', 'unit' => 'Flow'},
    },
 
    'length' => +{
@@ -5531,6 +5679,12 @@ sub named_type_value {
      96 => +{'name' => 'ndl_time', 'unit' => 's'},
      97 => +{'name' => 'cns_load', 'unit' => '%'},
      98 => +{'name' => 'n2_load', 'unit' => '%'},
+     114 => +{'name' => 'grit'},
+     115 => +{'name' => 'flow'},
+     117 => +{'name' => 'ebike_travel_range', 'unit' => 'km'},
+     118 => +{'name' => 'ebike_battery_level', 'unit' => '%'},
+     119 => +{'name' => 'ebike_assist_mode'},
+     120 => +{'name' => 'ebike_assist_level_percent', 'unit' => '%'},
    },
 
    'event' => +{
@@ -5565,6 +5719,7 @@ sub named_type_value {
          'rear_gear_change' => +{'name' => 'gear_change_data'}, # complex decoding!
          'rider_position_change' => +{'name' => 'rider_position', 'type_name' => 'rider_position_type'},
          'comm_timeout' => +{'name' => 'comm_timeout', 'type_name' => 'comm_timeout_type'},
+         'radar_threat_alert' => +{'name' => 'radar_threat_alert'}, # complex decoding!
        },
      },
 
@@ -5576,6 +5731,8 @@ sub named_type_value {
      11 => +{'name' => 'rear_gear_num'},
      12 => +{'name' => 'rear_gear'},
      13 => +{'name' => 'device_index', 'type_name' => 'device_index'},
+     21 => +{'name' => 'radar_threat_level_max', 'type_name' => 'radar_threat_level_type'},
+     22 => +{'name' => 'radar_threat_count'},
    },
 
    'device_info' => +{
@@ -5864,6 +6021,19 @@ sub named_type_value {
      11 => +{'name' => 'wkt_step_index', 'type_name' => 'message_index'},
    },
 
+   'jump' => +{
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
+     0 => +{'name' => 'distance', 'unit' => 'm'},
+     1 => +{'name' => 'height', 'unit' => 'm'},
+     2 => +{'name' => 'rotations'},
+     3 => +{'name' => 'hang_time', 'unit' => 's'},
+     4 => +{'name' => 'score'},
+     5 => +{'name' => 'position_lat', 'unit' => 'semicircles'},
+     6 => +{'name' => 'position_long', 'unit' => 'semicircles'},
+     7 => +{'name' => 'speed', 'scale' => 1000, 'unit' => 'm/s'},
+     8 => +{'name' => 'enhanced_speed', 'scale' => 1000, 'unit' => 'm/s'},
+   },
+
    # =================== Course file messages ===================
    'course' => +{
      4 => +{'name' => 'sport', 'type_name' => 'sport'},
@@ -6013,6 +6183,10 @@ sub named_type_value {
      81 => +{'name' => 'avg_cadence_position', 'unit' => 'rpm'},
      82 => +{'name' => 'max_cadence_position', 'unit' => 'rpm'},
      83 => +{'name' => 'manufacturer', 'type_name' => 'manufacturer'},
+     84 => +{'name' => 'total_grit', 'unit' => 'kGrit'},
+     85 => +{'name' => 'total_flow', 'unit' => 'Flow'},
+     86 => +{'name' => 'avg_grit', 'unit' => 'kGrit'},
+     87 => +{'name' => 'avg_flow', 'unit' => 'Flow'},
    },
 
    # =================== Segment list file messages ===================
@@ -6385,6 +6559,16 @@ sub named_type_value {
      9 => +{'name' => 'o2_toxicity'},
      10 => +{'name' => 'dive_number'},
      11 => +{'name' => 'bottom_time', 'scale' => 1000, 'unit' => 's'},
+   },
+
+   'climb_pro' => +{
+     253 => +{'name' => 'timestamp', 'type_name' => 'date_time'},
+     0 => +{'name' => 'position_lat', 'unit' => 'semicircles'},
+     1 => +{'name' => 'position_long', 'unit' => 'semicircles'},
+     2 => +{'name' => 'climb_pro_event', 'type_name' => 'climb_pro_event'},
+     3 => +{'name' => 'climb_number'},
+     4 => +{'name' => 'climb_category'},
+     5 => +{'name' => 'current_dist', 'unit' => 'm'},
    },
 
    # =================== Undocumented messages ===================
@@ -7811,9 +7995,12 @@ sub print_all_fields {
     my $invalid = $desc->{'I_' . $name};
     my $j;
 
+    my $len = @$v;
     for ($j = 0 ; $j < $c ; ++$j) {
-      isnan($v->[$i + $j]) && next;
-      $v->[$i + $j] != $invalid && last;
+      my $ij = $i + $j;
+      $ij >= $len && next;
+      isnan($v->[$ij]) && next;
+      $v->[$ij] != $invalid && last;
     }
 
     if ($j < $c || !$skip_invalid) {
@@ -7893,9 +8080,12 @@ sub print_all_json {
     my $invalid = $desc->{'I_' . $name};
     my $j;
 
+    my $len = @$v;
     for ($j = 0 ; $j < $c ; ++$j) {
-      isnan($v->[$i + $j]) && next;
-      $v->[$i + $j] != $invalid && last;
+      my $ij = $i + $j;
+      $ij >= $len && next;
+      isnan($v->[$ij]) && next;
+      $v->[$ij] != $invalid && last;
     }
 
     if ($j < $c || !$skip_invalid) {
