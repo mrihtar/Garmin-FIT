@@ -2241,6 +2241,7 @@ else {
      'edge_520_plus' => 3112,
      'edge_530' => 3121,
      'edge_830' => 3122,
+     'instinct' => 3126,
      'fenix5s_plus_apac' => 3134,
      'fenix5x_plus_apac' => 3135,
      'edge_520_plus_apac' => 3142,
