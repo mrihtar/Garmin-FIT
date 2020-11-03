@@ -211,7 +211,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.14  Copyright (c) 2016-2020 Matjaz Rihtar  (Sep 7, 2020)\n";
+    printf STDERR "fit2slf 2.15  Copyright (c) 2016-2020 Matjaz Rihtar  (Nov 3, 2020)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -450,8 +450,14 @@ sub FillGlobalVars {
       elsif ($k eq "total_cycles") { $g_totCycles = $v; }
       elsif ($k eq "total_calories") { $g_totCal = $v; }
       elsif ($k eq "time_in_hr_zone") { $g_timeHrZone = $v; } # array
-      elsif ($k eq "avg_speed") { $g_avgSpeed = $v; }
-      elsif ($k eq "max_speed") { $g_maxSpeed = $v; }
+      elsif ($k eq "avg_speed" && !defined $g_avgSpeed) { $g_avgSpeed = $v; }
+      elsif ($k eq "enhanced_avg_speed") {
+        if (defined $v) { $g_avgSpeed = $v; } # only if valid
+      }
+      elsif ($k eq "max_speed" && !defined $g_maxSpeed) { $g_maxSpeed = $v; }
+      elsif ($k eq "enhanced_max_speed") {
+        if (defined $v) { $g_maxSpeed = $v; } # only if valid
+      }
       elsif ($k eq "total_ascent") { $g_totAscent = $v; }
       elsif ($k eq "total_descent") { $g_totDescent = $v; }
       elsif ($k eq "avg_heart_rate") { $g_avgHr = $v; }
@@ -499,8 +505,14 @@ sub FillGlobalVars {
           { $g_timeHrZone = $v; } # array
         elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
           { $g_avgSpeed = $v; }
+        elsif ($k eq "enhanced_avg_speed") {
+          if (defined $v && !defined $g_avgSpeed) { $g_avgSpeed = $v; } # only if valid
+        }
         elsif ($k eq "max_speed" && !defined $g_maxSpeed)
           { $g_maxSpeed = $v; }
+        elsif ($k eq "enhanced_max_speed") {
+          if (defined $v && !defined $g_maxSpeed) { $g_maxSpeed = $v; } # only if valid
+        }
         elsif ($k eq "total_ascent" && !defined $g_totAscent)
           { $g_totAscent = $v; }
         elsif ($k eq "total_descent" && !defined $g_totDescent)
@@ -1138,9 +1150,7 @@ sub Get1stAlt {
     my $k; my $v;
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") {
-        if (!defined $alt) { $alt = $v; } # can be invalid
-      }
+      elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
       elsif ($k eq "enhanced_altitude") {
         if (defined $v) { $alt = $v; } # only if valid
       }
@@ -1216,9 +1226,7 @@ sub FilterAlt {
 
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") {
-        if (!defined $alt) { $alt = $v; } # can be invalid
-      }
+      elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
       elsif ($k eq "enhanced_altitude") {
         if (defined $v) { $alt = $v; } # only if valid
       }
@@ -1329,15 +1337,11 @@ sub PrintSlfEntry {
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
-    elsif ($k eq "altitude") {
-      if (!defined $alt) { $alt = $v; } # can be invalid
-    }
+    elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
     elsif ($k eq "enhanced_altitude") {
       if (defined $v) { $alt = $v; } # only if valid
     }
-    elsif ($k eq "speed") {
-      if (!defined $speed) { $speed = $v; } # can be invalid
-    }
+    elsif ($k eq "speed" && !defined $speed) { $speed = $v; } # can be invalid
     elsif ($k eq "enhanced_speed") {
       if (defined $v) { $speed = $v; } # only if valid
     }

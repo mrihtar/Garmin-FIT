@@ -216,7 +216,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.14  Copyright (c) 2016-2020 Matjaz Rihtar  (Sep 7, 2020)\n";
+    printf STDERR "fit2gpx 2.15  Copyright (c) 2016-2020 Matjaz Rihtar  (Nov 3, 2020)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -460,8 +460,14 @@ sub FillGlobalVars {
       elsif ($k eq "total_cycles") { $g_totCycles = $v; }
       elsif ($k eq "total_calories") { $g_totCal = $v; }
       elsif ($k eq "time_in_hr_zone") { $g_timeHrZone = $v; } # array
-      elsif ($k eq "avg_speed") { $g_avgSpeed = $v; }
-      elsif ($k eq "max_speed") { $g_maxSpeed = $v; }
+      elsif ($k eq "avg_speed" && !defined $g_avgSpeed) { $g_avgSpeed = $v; }
+      elsif ($k eq "enhanced_avg_speed") {
+        if (defined $v) { $g_avgSpeed = $v; } # only if valid
+      }
+      elsif ($k eq "max_speed" && !defined $g_maxSpeed) { $g_maxSpeed = $v; }
+      elsif ($k eq "enhanced_max_speed") {
+        if (defined $v) { $g_maxSpeed = $v; } # only if valid
+      }
       elsif ($k eq "total_ascent") { $g_totAscent = $v; }
       elsif ($k eq "total_descent") { $g_totDescent = $v; }
       elsif ($k eq "avg_heart_rate") { $g_avgHr = $v; }
@@ -473,7 +479,7 @@ sub FillGlobalVars {
     }
   }
 
-  if (scalar @$laps <= 1) {
+  if (scalar @$laps == 1) {
     # Find additional/missing general info in first (and only) lap
     $m = @{$laps}[0];
     if (defined $m) {
@@ -509,8 +515,14 @@ sub FillGlobalVars {
           { $g_timeHrZone = $v; } # array
         elsif ($k eq "avg_speed" && !defined $g_avgSpeed)
           { $g_avgSpeed = $v; }
+        elsif ($k eq "enhanced_avg_speed") {
+          if (defined $v && !defined $g_avgSpeed) { $g_avgSpeed = $v; } # only if valid
+        }
         elsif ($k eq "max_speed" && !defined $g_maxSpeed)
           { $g_maxSpeed = $v; }
+        elsif ($k eq "enhanced_max_speed") {
+          if (defined $v && !defined $g_maxSpeed) { $g_maxSpeed = $v; } # only if valid
+        }
         elsif ($k eq "total_ascent" && !defined $g_totAscent)
           { $g_totAscent = $v; }
         elsif ($k eq "total_descent" && !defined $g_totDescent)
@@ -851,9 +863,7 @@ sub Get1stAlt {
     my $k; my $v;
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") {
-        if (!defined $alt) { $alt = $v; } # can be invalid
-      }
+      elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
       elsif ($k eq "enhanced_altitude") {
         if (defined $v) { $alt = $v; } # only if valid
       }
@@ -929,9 +939,7 @@ sub FilterAlt {
 
     while (($k, $v) = each %$_) {
       if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-      elsif ($k eq "altitude") {
-        if (!defined $alt) { $alt = $v; } # can be invalid
-      }
+      elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
       elsif ($k eq "enhanced_altitude") {
         if (defined $v) { $alt = $v; } # only if valid
       }
@@ -1037,15 +1045,11 @@ sub ProcessRecord {
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
-    elsif ($k eq "altitude") {
-      if (!defined $alt) { $alt = $v; } # can be invalid
-    }
+    elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
     elsif ($k eq "enhanced_altitude") {
       if (defined $v) { $alt = $v; } # only if valid
     }
-    elsif ($k eq "speed") {
-      if (!defined $speed) { $speed = $v; } # can be invalid
-    }
+    elsif ($k eq "speed" && !defined $speed) { $speed = $v; } # can be invalid
     elsif ($k eq "enhanced_speed") {
       if (defined $v) { $speed = $v; } # only if valid
     }
@@ -1483,9 +1487,7 @@ sub PrintGpxTrkpt {
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     # optional
-    elsif ($k eq "altitude") {
-      if (!defined $ele) { $ele = $v; } # can be invalid
-    }
+    elsif ($k eq "altitude" && !defined $ele) { $ele = $v; } # can be invalid
     elsif ($k eq "enhanced_altitude") {
       if (defined $v) { $ele = $v; } # only if valid
     }
@@ -1560,6 +1562,7 @@ sub PrintGpxExtensions {
 
   # Cluetrust extension, ignored by Garmin
   my $lap_index = 1;
+  $lap_index = -1 if (scalar @$laps == 1); # print session instead of lap if only one
   foreach (@$laps) {
     PrintGpxLap(\%$_, $lap_index);
     $lap_index++;
@@ -1625,8 +1628,14 @@ sub PrintGpxLap {
     elsif ($k eq "total_cycles") { $tcycles = $v; }
     elsif ($k eq "total_calories") { $tcal = $v; }
     elsif ($k eq "time_in_hr_zone") { $g_timeHrZone = $v; } # array
-    elsif ($k eq "avg_speed") { $avgspeed = $v; }
-    elsif ($k eq "max_speed") { $maxspeed = $v; }
+    elsif ($k eq "avg_speed" && !defined $avgspeed) { $avgspeed = $v; }
+    elsif ($k eq "enhanced_avg_speed") {
+      if (defined $v) { $avgspeed = $v; } # only if valid
+    }
+    elsif ($k eq "max_speed" && !defined $maxspeed) { $maxspeed = $v; }
+    elsif ($k eq "enhanced_max_speed") {
+      if (defined $v) { $maxspeed = $v; } # only if valid
+    }
     elsif ($k eq "total_ascent") { $tascent = $v; }
     elsif ($k eq "total_descent") { $tdescent = $v; }
     elsif ($k eq "avg_heart_rate") { $avghr = $v; }
@@ -1638,11 +1647,34 @@ sub PrintGpxLap {
     elsif ($k eq "lap_trigger") { $ltrigger = conv_trigger($v); }
   }
 
-  # Fill in default values if no data found
+  # Fill in session values if no data found and only one lap
+  if ($lap_index < 0) {
+    $lap_index = 1;
+    $stime = $g_startTime;
+    $startlat = $g_startLat;
+    $startlon = $g_startLon;
+    $endlat = $g_endLat;
+    $endlon = $g_endLon;
+    $tetime = $g_totElapsTime;
+    $tdistance = $g_totDistance;
+    $tcycles = $g_totCycles;
+    $tcal = $g_totCal;
+    $avgspeed = $g_avgSpeed;
+    $maxspeed = $g_maxSpeed;
+    $tascent = $g_totAscent;
+    $tdescent = $g_totDescent;
+    $avghr = $g_avgHr;
+    $maxhr = $g_maxHr;
+    $avgcad = $g_avgCad;
+    $maxcad = $g_maxCad;
+  }
+  # Fill in default values if still no data found
+  $stime = 0 if !defined $stime;
   $startlat = 0 if !defined $startlat;
   $startlon = 0 if !defined $startlon;
   $endlat = 0 if !defined $endlat;
   $endlon = 0 if !defined $endlon;
+  $tetime = 0 if !defined $tetime;
   $tdistance = 0 if !defined $tdistance;
   $tcycles = 0 if !defined $tcycles;
   $tcal = 0 if !defined $tcal;
@@ -1724,16 +1756,18 @@ sub PrintGpxLap {
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "avg_rise_rate_downhill", "avg", Average(@$riseRateDownhills);
 
-    $g_minHr = 0 if $g_minHr == 10000;
+    my $minhr = $g_minHr; # not present in lap/session
+    $minhr = 0 if $minhr == 10000;
+    $maxhr = 0 if $maxhr == -10000;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
-      $indent x 3, "min_heart_rate", "min", $g_minHr;
+      $indent x 3, "min_heart_rate", "min", $minhr;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
       $indent x 3, "avg_heart_rate", "avg", $avghr;
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%d</gpxdata:summary>\n",
       $indent x 3, "max_heart_rate", "max", $maxhr;
 
     my $minPcHrMax;
-    if ($g_hrMax != 0) { $minPcHrMax = $g_minHr / $g_hrMax * 100; }
+    if ($g_hrMax != 0) { $minPcHrMax = $minhr / $g_hrMax * 100; }
     else { $minPcHrMax = 0.0; }
     printf "%s<gpxdata:summary name=\"%s\" kind=\"%s\">%.1f</gpxdata:summary>\n",
       $indent x 3, "min_percent_hrmax", "min", $minPcHrMax;
