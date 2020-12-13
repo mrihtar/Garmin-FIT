@@ -192,6 +192,7 @@ my $zones = [];
 my $records = [];
 my $laps = [];
 my $sessions = [];
+my $locations = [];
 
 my $fit = Garmin::FIT->new();
 ReadFitFile($file);
@@ -265,6 +266,7 @@ sub ReadFitFile {
         elsif ($name eq "record") { push @$records, $msg; }
         elsif ($name eq "lap") { push @$laps, $msg; }
         elsif ($name eq "session") { push @$sessions, $msg; }
+	elsif ($name eq "location") { push @$locations, $msg; }
       }
       return 1;
     }
@@ -1426,21 +1428,23 @@ sub PrintGpxTracks {
 #   <extensions> extensionsType </extensions> [0..1]
 # </trkseg>
 
-  printf "%s<trk>\n", $indent;
+  if (@$records) {
+    printf "%s<trk>\n", $indent;
 
-  printf "%s<name>%s</name>\n", $indent x 2, $g_trackName;
-  printf "%s<desc>%s</desc>\n", $indent x 2, $g_description;
-  printf "%s<type>%s</type>\n", $indent x 2, ucfirst $g_sport;
+    printf "%s<name>%s</name>\n", $indent x 2, $g_trackName;
+    printf "%s<desc>%s</desc>\n", $indent x 2, $g_description;
+    printf "%s<type>%s</type>\n", $indent x 2, ucfirst $g_sport;
 
-  printf "%s<trkseg>\n", $indent x 2;
-  my $ai = 0; # alt index
-  foreach (@$records) {
-    PrintGpxTrkpt(\%$_, $ai);
-    $ai++;
+    printf "%s<trkseg>\n", $indent x 2;
+    my $ai = 0; # alt index
+    foreach (@$records) {
+      PrintGpxTrkpt(\%$_, $ai);
+      $ai++;
+    }
+    printf "%s</trkseg>\n", $indent x 2;
+
+    printf "%s</trk>\n", $indent;
   }
-  printf "%s</trkseg>\n", $indent x 2;
-
-  printf "%s</trk>\n", $indent;
 } # PrintGpxTracks
 
 #==============================================================================
@@ -1552,6 +1556,21 @@ sub PrintGpxTrkpt {
     $tot_records++;
   }
 } # PrintGpxTrkpt
+
+#==============================================================================
+# Print all waypoints (wpt) from fit file
+sub PrintGpxWaypoints {
+  if (@$locations) {
+    for my $location (@$locations) {
+      printf "%s<wpt lon=\"%s\" lat=\"%s\">\n", $indent, $location->{position_long}, $location->{position_lat};
+      if (defined $location->{name}) {
+	printf "%s<name>%s</name>\n", $indent x 2, $location->{name}; # XXX missing XML escaping
+	# XXX missing more $location elements
+      }
+      printf "%s</wpt>\n", $indent;
+    }
+  }
+} # PrintGpxTracks
 
 #==============================================================================
 # Print all lap entries (gpx extensions block) from fit file
@@ -1905,6 +1924,8 @@ sub PrintGpxData {
   PrintGpxMetadata(); # name, author, ...
 
   PrintGpxTracks(); # track segments & points, ...
+
+  PrintGpxWaypoints();
 
   PrintGpxExtensions(); # laps, session, ...
 
