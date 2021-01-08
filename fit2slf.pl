@@ -211,7 +211,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.15  Copyright (c) 2016-2020 Matjaz Rihtar  (Nov 3, 2020)\n";
+    printf STDERR "fit2slf 2.16  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 8, 2021)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -1393,9 +1393,9 @@ sub PrintSlfEntry {
       pop @prev_distDiff;
     }
 
-#   my $altDiff = $alt - $prev_alt[-1];
-    # Calculate alt diff from kalman filtered alt
-    my $altDiff = @{$filt_alt}[$$fai] - $prev_alt[-1]; ${$fai}++;
+    my $altDiff = $alt - $prev_alt[-1];
+    # Calculate alt diff from kalman filtered alt (wrong!)
+  # my $altDiff = @{$filt_alt}[$$fai] - $prev_alt[-1]; ${$fai}++;
     for (my $ii = 0; $ii < scalar @prev_alt; $ii++) {
       if ($ii == 0) { $diff = $alt - $prev_alt[-($ii+1)]; }
       else { $diff = $prev_alt[-$ii] - $prev_alt[-($ii+1)]; }
@@ -1457,6 +1457,11 @@ sub PrintSlfEntry {
       printf " altitudeDifferencesUphill=\"%g\"", 0;
       if ($speed > 0) { push @$speedDownhills, $speed; }
     }
+    elsif ($altDiff == 0) {
+      printf " altitudeDifferencesDownhill=\"%g\"", 0;
+      printf " altitudeDifferencesUphill=\"%g\"", 0;
+      if ($speed > 0) { push @$speedDownhills, $speed; }
+    }
     else {
       printf " altitudeDifferencesDownhill=\"%g\"", 0;
       printf " altitudeDifferencesUphill=\"%.1f\"", $altDiff * 1000; # mm
@@ -1483,7 +1488,7 @@ sub PrintSlfEntry {
 
     printf " distanceAbsolute=\"%.1f\"", $dist;
     printf " distance=\"%.1f\"", $distDiff;
-    if ($altDiff < 0) {
+    if ($altDiff <= 0) {
       printf " distanceDownhill=\"%.1f\"", $distDiff;
       printf " distanceUphill=\"%g\"", 0;
       $g_distDownhill += $distDiff;
