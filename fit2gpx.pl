@@ -163,10 +163,13 @@ my $fpcalc = 0; # force power calculation
 my $zeroll = 0; # allow zero values for latitude/longitude if not present
 my $garmin_ext = 1; # 0 means cluetrust_ext
 my $rev_coord = 0;  # default: lat=... lon=...
+my $ts_offs = 0; # timestamp offset
 my $file;
+my $next_arg = "";
 foreach (@ARGV) {
   my $arg = $_;
-  if ($arg eq "-v") { Usage(1); }
+  if ($next_arg eq "ts_offs") { $ts_offs = $arg; $next_arg = ""; }
+  elsif ($arg eq "-v") { Usage(1); }
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
   elsif ($arg eq "-p") { $fpcalc = 1; }
@@ -174,6 +177,7 @@ foreach (@ARGV) {
   elsif ($arg eq "-g") { $garmin_ext = 1; }
   elsif ($arg eq "-c") { $garmin_ext = 0; }
   elsif ($arg eq "-r") { $rev_coord = 1; }
+  elsif ($arg eq "-t") { $next_arg = "ts_offs"; }
   else { $file = $arg; }
 }
 
@@ -190,6 +194,7 @@ my $profiles = [];
 my $sensors = [];
 my $zones = [];
 my $records = [];
+my $lengths = [];
 my $laps = [];
 my $sessions = [];
 
@@ -216,13 +221,13 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.15  Copyright (c) 2016-2020 Matjaz Rihtar  (Nov 3, 2020)\n";
+    printf STDERR "fit2gpx 2.17  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 8, 2021)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] [-g|-c] [-r] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] [-g|-c] [-r] [-t <offs>] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
@@ -235,6 +240,7 @@ sub Usage {
     printf STDERR "      <gpxdata:...>: temp, hr, cadence\n";
     printf STDERR "  -r  Reverse print of lat and lon in trkpt entries\n";
     printf STDERR "      (default: <trkpt lat=... lon=...>)\n";
+    printf STDERR "  -t <offs>  Add timestamp offset (integer, default: 0)\n";
   }
   _exit(1);
 } # Usage
@@ -263,6 +269,7 @@ sub ReadFitFile {
         elsif ($name eq "sensor") { push @$sensors, $msg; }
         elsif ($name eq "zones_target") { push @$zones, $msg; }
         elsif ($name eq "record") { push @$records, $msg; }
+        elsif ($name eq "length") { push @$lengths, $msg; }
         elsif ($name eq "lap") { push @$laps, $msg; }
         elsif ($name eq "session") { push @$sessions, $msg; }
       }
@@ -448,7 +455,7 @@ sub FillGlobalVars {
   if (defined $m) {
     %mh = %$m;
     while (($k, $v) = each %mh) {
-      if ($k eq "start_time") { $g_startTime = $v; } # + $timeoffs;
+      if ($k eq "start_time") { $g_startTime = $v + $ts_offs; } # + $timeoffs;
       elsif ($k eq "sport") { $g_sport = $v; }
       elsif ($k eq "sub_sport") { $g_subSport = $v; }
       elsif ($k eq "start_position_lat") { $g_startLat = $v; }
@@ -486,7 +493,7 @@ sub FillGlobalVars {
       %mh = %$m;
       while (($k, $v) = each %mh) {
         if ($k eq "start_time" && !defined $g_startTime)
-          { $g_startTime = $v; } # + $timeoffs;
+          { $g_startTime = $v + $ts_offs; } # + $timeoffs;
         elsif ($k eq "sport" && !defined $g_sport)
           { $g_sport = $v; }
         elsif ($k eq "sub_sport" && !defined $g_subSport)
@@ -862,7 +869,7 @@ sub Get1stAlt {
   foreach (@$records) {
     my $k; my $v;
     while (($k, $v) = each %$_) {
-      if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
+      if ($k eq "timestamp") { $timestamp = $v + $ts_offs; } # + $timeoffs;
       elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
       elsif ($k eq "enhanced_altitude") {
         if (defined $v) { $alt = $v; } # only if valid
@@ -938,7 +945,7 @@ sub FilterAlt {
     $alt = undef;
 
     while (($k, $v) = each %$_) {
-      if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
+      if ($k eq "timestamp") { $timestamp = $v + $ts_offs; } # + $timeoffs;
       elsif ($k eq "altitude" && !defined $alt) { $alt = $v; } # can be invalid
       elsif ($k eq "enhanced_altitude") {
         if (defined $v) { $alt = $v; } # only if valid
@@ -1041,7 +1048,7 @@ sub ProcessRecord {
 
   my $k; my $v;
   while (($k, $v) = each %mh) {
-    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
+    if ($k eq "timestamp") { $timestamp = $v + $ts_offs; } # + $timeoffs;
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "distance") { $dist = $v; }
@@ -1099,9 +1106,9 @@ sub ProcessRecord {
       pop @prev_distDiff;
     }
 
-#   my $altDiff = $alt - $prev_alt[-1];
-    # Calculate alt diff from kalman filtered alt
-    my $altDiff = @{$filt_alt}[$$fai] - $prev_alt[-1]; ${$fai}++;
+    my $altDiff = $alt - $prev_alt[-1];
+    # Calculate alt diff from kalman filtered alt (wrong!)
+  # my $altDiff = @{$filt_alt}[$$fai] - $prev_alt[-1]; ${$fai}++;
     for (my $ii = 0; $ii < scalar @prev_alt; $ii++) {
       if ($ii == 0) { $diff = $alt - $prev_alt[-($ii+1)]; }
       else { $diff = $prev_alt[-$ii] - $prev_alt[-($ii+1)]; }
@@ -1163,6 +1170,11 @@ sub ProcessRecord {
       #done: altitudeDifferencesUphill = 0
       if ($speed > 0) { push @$speedDownhills, $speed; }
     }
+    elsif ($altDiff == 0) {
+      #done: altitudeDifferencesDownhill = 0
+      #done: altitudeDifferencesUphill = 0
+      if ($speed > 0) { push @$speedDownhills, $speed; }
+    }
     else {
       #done: altitudeDifferencesDownhill = 0
       #done: altitudeDifferencesUphill = abs($altDiff)
@@ -1189,7 +1201,7 @@ sub ProcessRecord {
 
     #done: distanceAbsolute = $dist
     #done: distance = $distDiff
-    if ($altDiff < 0) {
+    if ($altDiff <= 0) {
       #done: distanceDownhill = $distDiff
       #done: distanceUphill = 0
       $g_distDownhill += $distDiff;
@@ -1365,7 +1377,7 @@ sub ProcessRecord {
     $tot_time += $time;
     #done: trainingTime = $time
     #done: trainingTimeAbsolute = $tot_time
-    if ($altDiff < 0) {
+    if ($altDiff <= 0) {
       #done: trainingTimeDownhill = $time
       #done: trainingTimeUphill = 0
       $g_timeDownhill += $time;
@@ -1483,7 +1495,7 @@ sub PrintGpxTrkpt {
   my $k; my $v;
   while (($k, $v) = each %mh) {
     # mandatory
-    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
+    if ($k eq "timestamp") { $timestamp = $v + $ts_offs; } # + $timeoffs;
     elsif ($k eq "position_long") { $lon = $v; } # can be missing
     elsif ($k eq "position_lat") { $lat = $v; } # can be missing
     # optional
@@ -1615,8 +1627,8 @@ sub PrintGpxLap {
 
   my $k; my $v;
   while (($k, $v) = each %mh) {
-    if ($k eq "timestamp") { $timestamp = $v; } # + $timeoffs;
-    elsif ($k eq "start_time") { $stime = $v; } # + $timeoffs;
+    if ($k eq "timestamp") { $timestamp = $v + $ts_offs; } # + $timeoffs;
+    elsif ($k eq "start_time") { $stime = $v + $ts_offs; } # + $timeoffs;
     elsif ($k eq "start_position_lat") { $startlat = $v; }
     elsif ($k eq "start_position_long") { $startlon = $v; }
     elsif ($k eq "end_position_lat") { $endlat = $v; }
