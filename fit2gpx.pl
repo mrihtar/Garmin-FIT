@@ -16,6 +16,7 @@ use Config::Simple ('-lc'); # ignore case
 #------------------------------------------------------------------------------
 # Global variables definition
 (my $prog = basename($0)) =~ s/.pl$//i;
+my $def_ini_file = $prog.".ini"; # default ini file
 
 my $indent = " " x 4; # default indent: 4 spaces
 my $timeoffs = 631065600; # sec since Garmin Epoch (1989-12-31 00:00:00 GMT)
@@ -164,11 +165,13 @@ my $zeroll = 0; # allow zero values for latitude/longitude if not present
 my $garmin_ext = 1; # 0 means cluetrust_ext
 my $rev_coord = 0;  # default: lat=... lon=...
 my $ts_offs = 0; # timestamp offset
+my $ini_file = $def_ini_file; # ini file
 my $file;
 my $next_arg = "";
 foreach (@ARGV) {
   my $arg = $_;
   if ($next_arg eq "ts_offs") { $ts_offs = $arg; $next_arg = ""; }
+  elsif ($next_arg eq "ini_file") { $ini_file = $arg; $next_arg = ""; }
   elsif ($arg eq "-v") { Usage(1); }
   elsif ($arg eq "-h" || $arg eq "-?") { Usage(0); }
   elsif ($arg eq "-y") { $overwrite = 1; }
@@ -178,6 +181,7 @@ foreach (@ARGV) {
   elsif ($arg eq "-c") { $garmin_ext = 0; }
   elsif ($arg eq "-r") { $rev_coord = 1; }
   elsif ($arg eq "-t") { $next_arg = "ts_offs"; }
+  elsif ($arg eq "-i") { $next_arg = "ini_file"; }
   else { $file = $arg; }
 }
 
@@ -206,7 +210,7 @@ ReadFitFile($file);
 FillGlobalVars();
 
 # Override values from fit file with values from ini file
-ReadIniFile($prog.".ini");
+ReadIniFile($ini_file);
 
 #------------------------------------------------------------------------------
 # Convert and display fit file content in slf format
@@ -221,13 +225,13 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.17  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 8, 2021)\n";
+    printf STDERR "fit2gpx 2.18  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 9, 2021)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
   }
   else {
-    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] [-g|-c] [-r] [-t <offs>] <fit-file>\n";
+    printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] [-g|-c] [-r] [-t <offs>] [-i <config-file>] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
     printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
@@ -241,6 +245,7 @@ sub Usage {
     printf STDERR "  -r  Reverse print of lat and lon in trkpt entries\n";
     printf STDERR "      (default: <trkpt lat=... lon=...>)\n";
     printf STDERR "  -t <offs>  Add timestamp offset (integer, default: 0)\n";
+    printf STDERR "  -i <config-file>  Specify location of .ini file (default: program's location)\n";
   }
   _exit(1);
 } # Usage
@@ -595,8 +600,8 @@ sub ReadIniFile {
   my $val;
 
   my $ini = new Config::Simple(syntax=>"ini");
-# $ini->read($fname) or die $ini->error()."\n";
-  $ini->read($fname); # ignore error if no ini file
+  if ($fname eq $def_ini_file) { $ini->read($fname); } # ignore error if no ini file
+  else { $ini->read($fname) or print STDERR $ini->error()."\n"; }
 
   $val = $ini->param("sport");
 # print STDERR "INI: sport = |$val|\n" if defined $val;
