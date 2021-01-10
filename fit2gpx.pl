@@ -145,6 +145,7 @@ my $prev_lat; my $prev_lon;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
 my $tot_time = 0;
 my $tot_records = 0;
+my $tot_locations = 0;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
 my $histSize = 6;
@@ -201,6 +202,7 @@ my $records = [];
 my $lengths = [];
 my $laps = [];
 my $sessions = [];
+my $locations = [];
 
 my $fit = Garmin::FIT->new();
 ReadFitFile($file);
@@ -225,7 +227,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2gpx 2.18  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 9, 2021)\n";
+    printf STDERR "fit2gpx 2.19  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 9, 2021)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -277,6 +279,7 @@ sub ReadFitFile {
         elsif ($name eq "length") { push @$lengths, $msg; }
         elsif ($name eq "lap") { push @$laps, $msg; }
         elsif ($name eq "session") { push @$sessions, $msg; }
+        elsif ($name eq "location") { push @$locations, $msg; }
       }
       return 1;
     }
@@ -806,9 +809,9 @@ sub PrintGpxHeader {
   printf "<gpx %s", 'version="1.1" creator="fit2gpx by Matjaz Rihtar"';
   my $loc = 'xsi:schemaLocation="';
   $loc = $loc . "http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd";
-  $loc = $loc . " http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd";
-  $loc = $loc . " http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd";
-  $loc = $loc . " http://www.garmin.com/xmlschemas/WaypointExtension/v1 http://www.garmin.com/xmlschemas/WaypointExtensionv1.xsd";
+  $loc = $loc . " http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www8.garmin.com/xmlschemas/GpxExtensionsv3.xsd";
+  $loc = $loc . " http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd";
+  $loc = $loc . " http://www.garmin.com/xmlschemas/WaypointExtension/v1 http://www8.garmin.com/xmlschemas/WaypointExtensionv1.xsd";
   $loc = $loc . " http://www.cluetrust.com/XML/GPXDATA/1/0 http://www.cluetrust.com/Schemas/gpxdata10.xsd";
   $loc = $loc . '"';
   printf " %s", $loc;
@@ -1030,9 +1033,11 @@ sub ProcessRecords {
   FilterAlt($alt0);
 # kalman_init(\%pwr_state, 2, 25, 1, $alt0);
 
-  my $fai = 0; # filtered alt index
-  foreach (@$records) {
-    ProcessRecord(\%$_, \$fai);
+  if (@$records) {
+    my $fai = 0; # filtered alt index
+    foreach (@$records) {
+      ProcessRecord(\%$_, \$fai);
+    }
   }
 } # ProcessRecords
 
@@ -1424,6 +1429,86 @@ sub ProcessRecord {
 } # ProcessRecord
 
 #==============================================================================
+# Print all waypoints from fit file
+sub PrintGpxWaypoints {
+  if (@$locations) {
+    my $ai = 0; # alt index
+    foreach (@$locations) {
+      PrintGpxWpt(\%$_, $ai);
+      $ai++;
+    }
+  }
+} # PrintGpxWaypoints
+
+#==============================================================================
+# Print single waypoint (wpt block) from fit file
+sub PrintGpxWpt {
+# <wpt lat="latitudeType [1]" lon="longitudeType [1]">
+#   <ele> xsd:decimal </ele> [0..1]
+#   <time> xsd:dateTime </time> [0..1]
+#   <magvar> degreesType </magvar> [0..1]
+#   <geoidheight> xsd:decimal </geoidheight> [0..1]
+#   <name> xsd:string </name> [0..1]
+#   <cmt> xsd:string </cmt> [0..1]
+#   <desc> xsd:string </desc> [0..1]
+#   <src> xsd:string </src> [0..1]
+#   <link> linkType </link> [0..*]
+#   <sym> xsd:string </sym> [0..1]
+#   <type> xsd:string </type> [0..1]
+#   <fix> fixType </fix> [0..1]
+#   <sat> xsd:nonNegativeInteger </sat> [0..1]
+#   <hdop> xsd:decimal </hdop> [0..1]
+#   <vdop> xsd:decimal </vdop> [0..1]
+#   <pdop> xsd:decimal </pdop> [0..1]
+#   <ageofdgpsdata> xsd:decimal </ageofdgpsdata> [0..1]
+#   <dgpsid> dgpsStationType </dgpsid> [0..1]
+#   <extensions> extensionsType </extensions> [0..1]
+# </wpt>
+
+  my $m = shift;
+  my %mh = %$m;
+  my $ai = shift; # alt index
+
+  my $timestamp = undef;
+  my $lon = undef; my $lat = undef;
+  my $ele = undef; my $name = undef;
+
+  my $k; my $v;
+  while (($k, $v) = each %mh) {
+    # mandatory
+    if ($k eq "timestamp") { $timestamp = $v + $ts_offs; } # + $timeoffs;
+    elsif ($k eq "position_long") { $lon = $v; } # can be missing
+    elsif ($k eq "position_lat") { $lat = $v; } # can be missing
+    # optional
+    elsif ($k eq "altitude" && !defined $ele) { $ele = $v; } # can be invalid
+    elsif ($k eq "enhanced_altitude") {
+      if (defined $v) { $ele = $v; } # only if valid
+    }
+    elsif ($k eq "name") { $name = $v; }
+  }
+
+  # Fill in default values if no data found
+  if (!defined $lat) { $zeroll ? $lat = 0 : return; }
+  if (!defined $lon) { $zeroll ? $lon = 0 : return; }
+  $ele = @{$orig_alt}[$ai] if !defined $ele; # from FilterAlt
+
+  if (defined $timestamp) {
+    if ($rev_coord) {
+      printf "%s<wpt lon=\"%s\" lat=\"%s\">\n", $indent, $lon, $lat;
+    }
+    else {
+      printf "%s<wpt lat=\"%s\" lon=\"%s\">\n", $indent, $lat, $lon;
+    }
+    if (defined $ele) { printf "%s<ele>%s</ele>\n", $indent x 2, $ele; }
+    printf "%s<time>%s</time>\n", $indent x 2, $fit->date_string($timestamp);
+    if (defined $name) { printf "%s<name>%s</name>\n", $indent x 2, $name; }
+
+    printf "%s</wpt>\n", $indent;
+    $tot_locations++;
+  }
+} # PrintGpxWpt
+
+#==============================================================================
 # Print all track points (trk block) from fit file
 sub PrintGpxTracks {
 # <trk>
@@ -1443,25 +1528,27 @@ sub PrintGpxTracks {
 #   <extensions> extensionsType </extensions> [0..1]
 # </trkseg>
 
-  printf "%s<trk>\n", $indent;
+  if (@$records) {
+    printf "%s<trk>\n", $indent;
 
-  printf "%s<name>%s</name>\n", $indent x 2, $g_trackName;
-  printf "%s<desc>%s</desc>\n", $indent x 2, $g_description;
-  printf "%s<type>%s</type>\n", $indent x 2, ucfirst $g_sport;
+    printf "%s<name>%s</name>\n", $indent x 2, $g_trackName;
+    printf "%s<desc>%s</desc>\n", $indent x 2, $g_description;
+    printf "%s<type>%s</type>\n", $indent x 2, ucfirst $g_sport;
 
-  printf "%s<trkseg>\n", $indent x 2;
-  my $ai = 0; # alt index
-  foreach (@$records) {
-    PrintGpxTrkpt(\%$_, $ai);
-    $ai++;
+    printf "%s<trkseg>\n", $indent x 2;
+    my $ai = 0; # alt index
+    foreach (@$records) {
+      PrintGpxTrkpt(\%$_, $ai);
+      $ai++;
+    }
+    printf "%s</trkseg>\n", $indent x 2;
+
+    printf "%s</trk>\n", $indent;
   }
-  printf "%s</trkseg>\n", $indent x 2;
-
-  printf "%s</trk>\n", $indent;
 } # PrintGpxTracks
 
 #==============================================================================
-# Print single track point from fit file
+# Print single track point (trkpt block) from fit file
 # Additional data (heart rate, cadence, temperature & power data) is formatted
 # according to selected GPX extension.
 sub PrintGpxTrkpt {
@@ -1533,6 +1620,15 @@ sub PrintGpxTrkpt {
 
       if ($garmin_ext) { printf "%s<gpxtpx:TrackPointExtension>\n", $indent x 5; }
 
+      if (defined $temp) {
+        if ($garmin_ext) {
+          printf "%s<gpxtpx:atemp>%s</gpxtpx:atemp>\n", $indent x 6, $temp;
+        }
+        else { # cluetrust_ext
+          printf "%s<gpxdata:temp>%s</gpxdata:temp>\n", $indent x 5, $temp;
+        }
+      }
+
       if (defined $hr) {
         if ($garmin_ext) {
           printf "%s<gpxtpx:hr>%s</gpxtpx:hr>\n", $indent x 6, $hr;
@@ -1551,15 +1647,6 @@ sub PrintGpxTrkpt {
         }
       }
 
-      if (defined $temp) {
-        if ($garmin_ext) {
-          printf "%s<gpxtpx:atemp>%s</gpxtpx:atemp>\n", $indent x 6, $temp;
-        }
-        else { # cluetrust_ext
-          printf "%s<gpxdata:temp>%s</gpxdata:temp>\n", $indent x 5, $temp;
-        }
-      }
-
       if ($garmin_ext) { printf "%s</gpxtpx:TrackPointExtension>\n", $indent x 5; }
 
       printf "%s</extensions>\n", $indent x 4;
@@ -1575,17 +1662,19 @@ sub PrintGpxTrkpt {
 sub PrintGpxExtensions {
 # See https://github.com/pytrainer/pytrainer/wiki/Sample-GPX-
 
-  printf "%s<extensions>\n", $indent;
+  if (@$laps) {
+    printf "%s<extensions>\n", $indent;
 
-  # Cluetrust extension, ignored by Garmin
-  my $lap_index = 1;
-  $lap_index = -1 if (scalar @$laps == 1); # print session instead of lap if only one
-  foreach (@$laps) {
-    PrintGpxLap(\%$_, $lap_index);
-    $lap_index++;
+    # Cluetrust extension, ignored by Garmin
+    my $lap_index = 1;
+    $lap_index = -1 if (scalar @$laps == 1); # print session instead of lap if only one
+    foreach (@$laps) {
+      PrintGpxLap(\%$_, $lap_index);
+      $lap_index++;
+    }
+
+    printf "%s</extensions>\n", $indent;
   }
-
-  printf "%s</extensions>\n", $indent;
 } # PrintGpxExtensions
 
 #==============================================================================
@@ -1920,6 +2009,8 @@ sub PrintGpxData {
   PrintGpxHeader(); # version, xmlns
 
   PrintGpxMetadata(); # name, author, ...
+
+  PrintGpxWaypoints(); # waypoints, ...
 
   PrintGpxTracks(); # track segments & points, ...
 

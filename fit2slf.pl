@@ -145,6 +145,8 @@ my $prev_lat; my $prev_lon;
 # my $prev_dist; my $prev_alt;
 my $prev_speed; my $prev_hr; my $prev_cad; my $prev_temp;
 my $tot_time = 0;
+my $tot_records = 0;
+my $tot_locations = 0;
 
 # Previous values of dist/alt for dist/alt filtering (smoothing)
 my $histSize = 6;
@@ -196,6 +198,7 @@ my $records = [];
 my $lengths = [];
 my $laps = [];
 my $sessions = [];
+my $locations = [];
 
 my $fit = Garmin::FIT->new();
 ReadFitFile($file);
@@ -220,7 +223,7 @@ sub Usage {
   my $ver_only = shift;
 
   if ($ver_only) {
-    printf STDERR "fit2slf 2.18  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 9, 2021)\n";
+    printf STDERR "fit2slf 2.19  Copyright (c) 2016-2021 Matjaz Rihtar  (Jan 9, 2021)\n";
     printf STDERR "Garmin::FIT  Copyright (c) 2010-2017 Kiyokazu Suto\n";
     printf STDERR "FIT protocol ver: %s, profile ver: %s\n",
       Garmin::FIT->protocol_version_string, Garmin::FIT->profile_version_string;
@@ -266,6 +269,7 @@ sub ReadFitFile {
         elsif ($name eq "length") { push @$lengths, $msg; }
         elsif ($name eq "lap") { push @$laps, $msg; }
         elsif ($name eq "session") { push @$sessions, $msg; }
+        elsif ($name eq "location") { push @$locations, $msg; }
       }
       return 1;
     }
@@ -1279,8 +1283,6 @@ sub FilterAlt {
 # Because this routine is called twice, initialize all used variables at the
 # beginning.
 sub PrintSlfEntries {
-  printf "%s<Entries>\n", $indent;
-
   # Initialize arrays
   $alts = [];
   $hrs = [];
@@ -1320,12 +1322,16 @@ sub PrintSlfEntries {
   FilterAlt($alt0);
 # kalman_init(\%pwr_state, 2, 25, 1, $alt0);
 
-  my $fai = 0; # filtered alt index
-  foreach (@$records) {
-    PrintSlfEntry(\%$_, \$fai);
-  }
+  if (@$records) {
+    printf "%s<Entries>\n", $indent;
 
-  printf "%s</Entries>\n", $indent;
+    my $fai = 0; # filtered alt index
+    foreach (@$records) {
+      PrintSlfEntry(\%$_, \$fai);
+    }
+
+    printf "%s</Entries>\n", $indent;
+  }
 } # PrintSlfEntries
 
 #==============================================================================
@@ -1704,6 +1710,7 @@ sub PrintSlfEntry {
     printf " powerZone=\"%g\"", $powerZone;
 
     printf "/>\n";
+    $tot_records++;
 
     $prev_timestamp = $timestamp;
     $prev_lat = $lat;
@@ -1722,15 +1729,17 @@ sub PrintSlfEntry {
 #==============================================================================
 # Print all lap entries (markers block) from fit file
 sub PrintSlfMarkers {
-  printf "%s<Markers>\n", $indent;
+  if (@$laps) {
+    printf "%s<Markers>\n", $indent;
 
-  my $lap_index = 1;
-  foreach (@$laps) {
-    PrintSlfMarker(\%$_, $lap_index);
-    $lap_index++;
+    my $lap_index = 1;
+    foreach (@$laps) {
+      PrintSlfMarker(\%$_, $lap_index);
+      $lap_index++;
+    }
+
+    printf "%s</Markers>\n", $indent;
   }
-
-  printf "%s</Markers>\n", $indent;
 } # PrintSlfMarkers
 
 #==============================================================================
