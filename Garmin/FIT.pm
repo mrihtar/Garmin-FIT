@@ -43,7 +43,7 @@ require Exporter;
              FIT_HEADER_LENGTH
              );
 
-$version = 0.32;
+$version = 0.33;
 $version_major_scale = 100;
 
 sub version_major {
@@ -291,7 +291,7 @@ sub error {
     $fit = $self->file;
     $fit .= ': ' if $fit ne '';
 
-    $self->{error} = "$p::$subr\#$l\@$fn: $fit$_[0]";
+    $self->{error} = "${p}::$subr\#$l\@$fn: $fit$_[0]";
 
     if (&safe_isa($self->{error_callback}, CODE)) {
       my $argv = &safe_isa($self->{error_callback_argv}, ARRAY) ? $self->{error_callback_argv} : [];
