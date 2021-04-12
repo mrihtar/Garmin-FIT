@@ -215,7 +215,7 @@ FillGlobalVars();
 ReadIniFile($ini_file);
 
 #------------------------------------------------------------------------------
-# Convert and display fit file content in slf format
+# Convert and display fit file content in gpx format
 PrintGpxData($gpx_file);
 
 exit(0);
@@ -236,7 +236,7 @@ sub Usage {
     printf STDERR "Usage: $prog [-v|-h] [-y] [-p] [-z] [-g|-c] [-r] [-t <offs>] [-i <config-file>] <fit-file>\n";
     printf STDERR "  -v  Print version and exit\n";
     printf STDERR "  -h  Print short help and exit\n";
-    printf STDERR "  -y  Overwrite <slf-file> if it exists (default: don't overwrite)\n";
+    printf STDERR "  -y  Overwrite <gpx-file> if it exists (default: don't overwrite)\n";
     printf STDERR "  -p  Force power calculation (default: use fit power data if present)\n";
     printf STDERR "  -z  Allow zero values for latitude/longitude if not present\n";
     printf STDERR "      (default: ignore records with no latitude/longitude)\n";
