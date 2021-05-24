@@ -16,7 +16,11 @@ use Config::Simple ('-lc'); # ignore case
 #------------------------------------------------------------------------------
 # Global variables definition
 (my $prog = basename($0)) =~ s/.pl$//i;
-my $def_ini_file = $prog.".ini"; # default ini file
+(my $fullprog = $0) =~ s/.pl$//i;
+my $def_ini_file; # default ini file
+if (-e $prog.".ini") { $def_ini_file = $prog.".ini"; }
+elsif (-e $ENV{'HOME'}."/.".$prog.".ini") { $def_ini_file = $ENV{'HOME'}."/.".$prog.".ini"; }
+else { $def_ini_file = $fullprog.".ini"; }
 
 my $indent = " " x 4; # default indent: 4 spaces
 my $timeoffs = 631065600; # sec since Garmin Epoch (1989-12-31 00:00:00 GMT)
