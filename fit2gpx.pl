@@ -1492,20 +1492,18 @@ sub PrintGpxWpt {
   if (!defined $lon) { $zeroll ? $lon = 0 : return; }
   $ele = @{$orig_alt}[$ai] if !defined $ele; # from FilterAlt
 
-  if (defined $timestamp) {
-    if ($rev_coord) {
-      printf "%s<wpt lon=\"%s\" lat=\"%s\">\n", $indent, $lon, $lat;
-    }
-    else {
-      printf "%s<wpt lat=\"%s\" lon=\"%s\">\n", $indent, $lat, $lon;
-    }
-    if (defined $ele) { printf "%s<ele>%s</ele>\n", $indent x 2, $ele; }
-    printf "%s<time>%s</time>\n", $indent x 2, $fit->date_string($timestamp);
-    if (defined $name) { printf "%s<name>%s</name>\n", $indent x 2, $name; }
-
-    printf "%s</wpt>\n", $indent;
-    $tot_locations++;
+  if ($rev_coord) {
+    printf "%s<wpt lon=\"%s\" lat=\"%s\">\n", $indent, $lon, $lat;
   }
+  else {
+    printf "%s<wpt lat=\"%s\" lon=\"%s\">\n", $indent, $lat, $lon;
+  }
+  if (defined $ele) { printf "%s<ele>%s</ele>\n", $indent x 2, $ele; }
+  if (defined $timestamp) { printf "%s<time>%s</time>\n", $indent x 2, $fit->date_string($timestamp); }
+  if (defined $name) { printf "%s<name>%s</name>\n", $indent x 2, $name; }
+
+  printf "%s</wpt>\n", $indent;
+  $tot_locations++;
 } # PrintGpxWpt
 
 #==============================================================================
